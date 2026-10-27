@@ -1,0 +1,67 @@
+export interface Env {
+  nodeEnv: string;
+  port: number;
+  databaseUrl: string;
+  jwtSecret: string;
+  accessTtlSec: number;
+  refreshTtlDays: number;
+  googleClientIds: string[];
+  corsOrigins: string[];
+  razorpayKeyId: string;
+  razorpayKeySecret: string;
+  razorpayWebhookSecret: string;
+  logLevel: string;
+}
+
+export const ENV = Symbol('ENV');
+
+const list = (v: string | undefined): string[] =>
+  (v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/** Reads and validates configuration once at startup; fails fast with a readable message. */
+export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
+  const nodeEnv = src.NODE_ENV ?? 'development';
+  const prod = nodeEnv === 'production';
+  const problems: string[] = [];
+  const need = (key: string): string => {
+    const v = src[key];
+    if (!v) problems.push(`${key} is required`);
+    return v ?? '';
+  };
+
+  const jwtSecret = need('JWT_SECRET');
+  if (jwtSecret && jwtSecret.length < 32) problems.push('JWT_SECRET must be at least 32 characters');
+  const databaseUrl = need('DATABASE_URL');
+  const googleClientIds = list(src.GOOGLE_CLIENT_IDS);
+  if (googleClientIds.length === 0) problems.push('GOOGLE_CLIENT_IDS is required (comma separated)');
+
+  const razorpayKeyId = src.RAZORPAY_KEY_ID ?? '';
+  const razorpayKeySecret = src.RAZORPAY_KEY_SECRET ?? '';
+  const razorpayWebhookSecret = src.RAZORPAY_WEBHOOK_SECRET ?? '';
+  if (prod && (!razorpayKeyId || !razorpayKeySecret || !razorpayWebhookSecret)) {
+    problems.push('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required in production');
+  }
+  const corsOrigins = list(src.CORS_ORIGINS);
+  if (prod && corsOrigins.length === 0) problems.push('CORS_ORIGINS is required in production');
+
+  if (problems.length) {
+    throw new Error(`Invalid configuration:\n - ${problems.join('\n - ')}`);
+  }
+  return {
+    nodeEnv,
+    port: Number(src.PORT ?? 3000),
+    databaseUrl,
+    jwtSecret,
+    accessTtlSec: Number(src.ACCESS_TTL_SEC ?? 900),
+    refreshTtlDays: Number(src.REFRESH_TTL_DAYS ?? 30),
+    googleClientIds,
+    corsOrigins,
+    razorpayKeyId,
+    razorpayKeySecret,
+    razorpayWebhookSecret,
+    logLevel: src.LOG_LEVEL ?? (prod ? 'info' : 'debug'),
+  };
+}

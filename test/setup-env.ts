@@ -1,0 +1,9 @@
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = process.env.DATABASE_URL_TEST ?? 'postgresql://postgres@localhost:5433/examgadh_test';
+process.env.JWT_SECRET = 'test-secret-test-secret-test-secret-123456';
+process.env.GOOGLE_CLIENT_IDS = 'test-client.apps.googleusercontent.com';
+process.env.RAZORPAY_KEY_ID = 'rzp_test_key';
+process.env.RAZORPAY_KEY_SECRET = 'rzp_test_secret_value';
+process.env.RAZORPAY_WEBHOOK_SECRET = 'whsec_test_value';
+process.env.LOG_LEVEL = 'silent';
+process.env.THROTTLE_DISABLED = '1';

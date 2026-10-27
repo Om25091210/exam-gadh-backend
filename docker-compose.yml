@@ -1,0 +1,16 @@
+# Local development database only. `pnpm start:dev` runs the API on the host.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: examgadh
+      POSTGRES_PASSWORD: examgadh
+      POSTGRES_DB: examgadh
+    ports: ["5432:5432"]
+    volumes: ["dbdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U examgadh"]
+      interval: 5s
+      retries: 10
+volumes:
+  dbdata:

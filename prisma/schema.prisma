@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Language {
+  hi
+  en
+}
+
+enum SessionRevokeReason {
+  REPLACED // another device signed in (single active session rule)
+  LOGOUT
+  REFRESH_REUSE // a rotated refresh token was presented again
+  ADMIN
+}
+
+enum AccessLevel {
+  free
+  paid
+}
+
+enum TestKind {
+  diagnostic
+  mock
+  topic
+  subject
+  pyq
+  csat
+  live
+}
+
+enum TestMode {
+  static
+  live
+}
+
+enum AttemptStatus {
+  in_progress
+  submitted
+  expired
+}
+
+enum OrderStatus {
+  created
+  paid
+  failed
+  refunded
+}
+
+// ---------------------------------------------------------------- identity
+model User {
+  id         String    @id @default(uuid()) @db.Uuid
+  googleSub  String    @unique
+  email      String    @unique
+  name       String
+  avatarUrl  String?
+  language   Language  @default(hi)
+  district   String?
+  targetExam String? // Exam.id
+  // Nullable on purpose: phone login/capture is deferred (requirements FR-002), the column keeps a later add cheap.
+  phone      String?   @unique
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+  deletedAt  DateTime?
+
+  sessions     Session[]
+  attempts     Attempt[]
+  entitlements Entitlement[]
+  orders       Order[]
+}
+
+model Session {
+  id               String               @id @default(uuid()) @db.Uuid
+  userId           String               @db.Uuid
+  deviceId         String
+  deviceName       String?
+  platform         String // android | web | ios
+  refreshTokenHash String
+  // Hash of the previous refresh token: presenting it again means the token was stolen/replayed.
+  prevRefreshHash  String?
+  createdAt        DateTime             @default(now())
+  lastSeenAt       DateTime             @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokeReason     SessionRevokeReason?
+  ip               String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+// ---------------------------------------------------------------- taxonomy
+model Exam {
+  id           String  @id // cgpsc, si, patwari, mandi, food, other
+  nameEn       String
+  nameHi       String
+  shortEn      String
+  shortHi      String
+  correctMarks Float   @default(2)
+  negativeFrac Float   @default(0.3333333333)
+  mockSize     Int     @default(25)
+  hasMains     Boolean @default(false)
+  active       Boolean @default(true)
+  sort         Int     @default(0)
+
+  tests Test[]
+  plans PlanExam[]
+}
+
+model Subject {
+  code   String @id
+  nameEn String
+  nameHi String
+  sort   Int    @default(0)
+
+  topics Topic[]
+  notes  Note[]
+}
+
+model Topic {
+  code        String @id
+  subjectCode String
+  nameEn      String
+  nameHi      String
+  sort        Int    @default(0)
+  weight      Float  @default(1)
+
+  subject   Subject    @relation(fields: [subjectCode], references: [code])
+  questions Question[]
+
+  @@index([subjectCode])
+}
+
+// ---------------------------------------------------------------- content
+model Note {
+  id          String      @id
+  subjectCode String
+  titleEn     String
+  titleHi     String
+  access      AccessLevel @default(free)
+  // [{ anchor, en:{title, blocks:[{t:'p'|'li', x}]}, hi:{...} }]
+  sections    Json
+  version     Int         @default(1)
+  published   Boolean     @default(false)
+  updatedAt   DateTime    @updatedAt
+
+  subject Subject @relation(fields: [subjectCode], references: [code])
+
+  @@index([subjectCode, published])
+}
+
+model Question {
+  id         String   @id
+  topicCode  String
+  difficulty Int      @default(2) // 1 easy .. 3 hard
+  // { en:{q, o:[4], s}, hi:{q, o:[4], s} }  (s = explanation)
+  body       Json
+  answer     Int // 0..3
+  source     String   @default("original") // original | pyq
+  pyqYear    Int?
+  pyqPaper   String?
+  published  Boolean  @default(false)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  topic Topic          @relation(fields: [topicCode], references: [code])
+  tests TestQuestion[]
+
+  @@index([topicCode, difficulty, published])
+}
+
+// ---------------------------------------------------------------- tests
+model Test {
+  id           String      @id
+  examId       String
+  title        Json // { en, hi }
+  kind         TestKind
+  mode         TestMode    @default(static)
+  access       AccessLevel @default(free)
+  durationMin  Int
+  correctMarks Float? // overrides Exam.correctMarks
+  negativeFrac Float? // overrides Exam.negativeFrac
+  attemptLimit Int? // null = unlimited
+  shuffle      Boolean     @default(true)
+  startsAt     DateTime? // live tests
+  endsAt       DateTime? // live tests: last moment to start
+  published    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+
+  exam      Exam           @relation(fields: [examId], references: [id])
+  questions TestQuestion[]
+  attempts  Attempt[]
+
+  @@index([examId, published, kind])
+}
+
+model TestQuestion {
+  testId     String
+  questionId String
+  position   Int
+
+  test     Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@id([testId, questionId])
+  @@index([testId, position])
+}
+
+model Attempt {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @db.Uuid
+  testId       String
+  status       AttemptStatus @default(in_progress)
+  startedAt    DateTime      @default(now())
+  deadlineAt   DateTime
+  submittedAt  DateTime?
+  order        String[] // shuffled question ids served to this attempt
+  score        Float?
+  correct      Int?
+  wrong        Int?
+  unattempted  Int?
+  maxScore     Float?
+  timeSpentSec Int?
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test    Test            @relation(fields: [testId], references: [id])
+  answers AttemptAnswer[]
+
+  @@index([userId, testId])
+  @@index([testId, score])
+}
+
+model AttemptAnswer {
+  attemptId    String   @db.Uuid
+  questionId   String
+  selected     Int? // 0..3, null = cleared
+  flagged      Boolean  @default(false)
+  timeSpentSec Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@id([attemptId, questionId])
+}
+
+// ---------------------------------------------------------------- commerce
+model Plan {
+  id           String        @id // pass_prelims, pass_full
+  nameEn       String
+  nameHi       String
+  // { "3": 399, "6": 699, "12": 999 } in INR
+  prices       Json
+  trialDays    Int           @default(0)
+  active       Boolean       @default(true)
+  topTier      Boolean       @default(false)
+  // empty = all exams
+  exams        PlanExam[]
+  entitlements Entitlement[]
+  orders       Order[]
+  coupons      Coupon[]
+}
+
+model PlanExam {
+  planId String
+  examId String
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exam Exam @relation(fields: [examId], references: [id])
+
+  @@id([planId, examId])
+}
+
+model Entitlement {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  planId    String
+  startsAt  DateTime  @default(now())
+  endsAt    DateTime
+  source    String // payment | coupon | admin
+  orderId   String?   @unique @db.Uuid
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan  Plan   @relation(fields: [planId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@index([userId, endsAt])
+}
+
+model Order {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @db.Uuid
+  planId          String
+  months          Int
+  amountPaise     Int
+  currency        String      @default("INR")
+  status          OrderStatus @default(created)
+  razorpayOrderId String      @unique
+  couponCode      String?
+  createdAt       DateTime    @default(now())
+
+  user        User         @relation(fields: [userId], references: [id])
+  plan        Plan         @relation(fields: [planId], references: [id])
+  payments    Payment[]
+  entitlement Entitlement?
+
+  @@index([userId, createdAt])
+}
+
+model Payment {
+  id                String   @id @default(uuid()) @db.Uuid
+  orderId           String   @db.Uuid
+  razorpayPaymentId String   @unique // idempotency key for verify + webhook
+  amountPaise       Int
+  method            String?
+  status            String // captured | failed | refunded
+  rawEvent          Json?
+  createdAt         DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model Coupon {
+  code      String    @id
+  planId    String
+  days      Int
+  maxUses   Int?
+  usedCount Int       @default(0)
+  expiresAt DateTime?
+  active    Boolean   @default(true)
+
+  plan Plan @relation(fields: [planId], references: [id])
+}
+
+// ---------------------------------------------------------------- ops
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actor     String // user id, admin id or 'system'
+  action    String
+  target    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
