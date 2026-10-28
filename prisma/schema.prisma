@@ -333,6 +333,7 @@ model Question {
   hasEn         Boolean       @default(false)
   hasHi         Boolean       @default(false)
   contentHash   String // normalised hash of the English+Hindi stem, used for duplicate detection
+  searchText    String        @default("") // lower-cased stems for admin search
   version       Int           @default(1)
   reportedCount Int           @default(0)
   createdById   String?       @db.Uuid
@@ -347,6 +348,7 @@ model Question {
 
   @@index([status, topicCode, difficulty])
   @@index([contentHash])
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin, map: "Question_searchText_trgm")
   @@index([hasEn, hasHi])
   @@index([pyqExamId, pyqYear])
 }
