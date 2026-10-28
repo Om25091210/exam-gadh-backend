@@ -47,6 +47,7 @@ export class AuthService {
       });
     }
     if (user.deletedAt) throw forbidden('ACCOUNT_DELETED', 'This account was deleted');
+    if (user.status === 'suspended') throw forbidden('ACCOUNT_SUSPENDED', 'Your account is suspended. Contact support.');
     await this.prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } });
 
     const { session, refreshToken, replaced } = await this.sessions.create(user.id, {

@@ -11,7 +11,8 @@ export function bootstrapApp(app: INestApplication, opts: { logger?: boolean } =
   const env = app.get<Env>(ENV);
   if (opts.logger !== false) app.useLogger(app.get(Logger));
   app.use(helmet());
-  app.enableCors({ origin: env.corsOrigins.length ? env.corsOrigins : false, credentials: false });
+  // credentials: true lets the admin cookie travel; origins are an exact allow-list, never '*'.
+  app.enableCors({ origin: env.corsOrigins.length ? env.corsOrigins : false, credentials: true });
   app.setGlobalPrefix('v1', { exclude: ['health', 'health/ready'] });
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(

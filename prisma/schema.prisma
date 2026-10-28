@@ -170,6 +170,8 @@ model AdminUser {
   // TOTP secret is stored encrypted (AES-256-GCM, key from env ADMIN_TOTP_KEY).
   totpSecretEnc      String?
   totpEnabledAt      DateTime?
+  // last accepted TOTP time-step: a code can be used only once (replay protection)
+  lastTotpStep       Int?
   recoveryCodeHashes String[]
   failedLogins       Int       @default(0)
   lockedUntil        DateTime?

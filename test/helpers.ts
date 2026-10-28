@@ -86,3 +86,52 @@ export async function login(app: INestApplication, sub: string, deviceId = `devi
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 export const rzpSignature = (secret: string, data: string | Buffer) => createHmac('sha256', secret).update(data).digest('hex');
+
+// ---------------------------------------------------------------- admin helpers
+import { StaffRole } from '@prisma/client';
+import { encryptSecret, hashPassword } from '../src/modules/admin-auth/secrets';
+import { base32Decode, newTotpSecret, totp } from '../src/modules/admin-auth/totp';
+
+export const ADMIN_PASSWORD = 'Correct-Horse-42x';
+
+export async function makeAdmin(prisma: PrismaService, o: { email?: string; role?: StaffRole; totp?: boolean; mustChangePassword?: boolean; password?: string } = {}) {
+  const secret = newTotpSecret();
+  const admin = await prisma.adminUser.create({
+    data: {
+      email: o.email ?? `${(o.role ?? 'SUPER_ADMIN').toLowerCase()}@examgadh.test`,
+      name: 'Test Admin',
+      role: o.role ?? 'SUPER_ADMIN',
+      passwordHash: await hashPassword(o.password ?? ADMIN_PASSWORD),
+      mustChangePassword: o.mustChangePassword ?? false,
+      ...(o.totp === false ? {} : { totpSecretEnc: encryptSecret(secret, Buffer.alloc(32, 7)), totpEnabledAt: new Date() }),
+    },
+  });
+  return { admin, secret };
+}
+
+export const codeFor = (secret: string, clock: FakeClock) => totp(base32Decode(secret), clock.now().getTime());
+
+export interface AdminHandle {
+  cookie: string;
+  csrf: string;
+  id: string;
+  headers: Record<string, string>;
+  secret: string;
+}
+
+/** Full sign-in: password, then a TOTP code. Moves the fake clock one step so the code is never a replay. */
+export async function adminSignIn(app: INestApplication, clock: FakeClock, adminRow: { id: string; email: string }, secret: string, password = ADMIN_PASSWORD): Promise<AdminHandle> {
+  clock.advance(31_000);
+  const l = await request(app.getHttpServer()).post('/v1/admin/auth/login').send({ email: adminRow.email, password });
+  if (l.status !== 200) throw new Error(`admin login failed: ${l.status} ${JSON.stringify(l.body)}`);
+  let cookie = (l.headers['set-cookie'] as unknown as string[])[0].split(';')[0];
+  const m = await request(app.getHttpServer()).post('/v1/admin/auth/mfa').set('Cookie', cookie).set('x-csrf-token', l.body.csrfToken).send({ code: codeFor(secret, clock) });
+  if (m.status !== 200) throw new Error(`admin mfa failed: ${m.status} ${JSON.stringify(m.body)}`);
+  cookie = (m.headers['set-cookie'] as unknown as string[])[0].split(';')[0];
+  return { cookie, csrf: m.body.csrfToken, id: adminRow.id, secret, headers: { Cookie: cookie, 'x-csrf-token': m.body.csrfToken } };
+}
+
+export async function signedInAdmin(app: INestApplication, prisma: PrismaService, clock: FakeClock, role: StaffRole = 'SUPER_ADMIN', email?: string) {
+  const { admin, secret } = await makeAdmin(prisma, { role, email });
+  return adminSignIn(app, clock, admin, secret);
+}

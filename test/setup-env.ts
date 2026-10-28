@@ -7,3 +7,4 @@ process.env.RAZORPAY_KEY_SECRET = 'rzp_test_secret_value';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'whsec_test_value';
 process.env.LOG_LEVEL = 'silent';
 process.env.THROTTLE_DISABLED = '1';
+process.env.ADMIN_TOTP_KEY = Buffer.alloc(32, 7).toString('base64');

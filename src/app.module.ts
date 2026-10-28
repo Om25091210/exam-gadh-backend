@@ -10,6 +10,8 @@ import { ContentController } from './content/content.controller';
 import { HealthController } from './health/health.controller';
 import { AttemptsModule } from './modules/attempts/attempts.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AuditModule } from './modules/audit/audit.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { Global, Module as NestModule } from '@nestjs/common';
@@ -48,6 +50,8 @@ class ConfigModule {}
     AuthModule,
     BillingModule,
     SettingsModule,
+    AuditModule,
+    AdminAuthModule,
     AttemptsModule,
   ],
   controllers: [HealthController, ContentController, UsersController],

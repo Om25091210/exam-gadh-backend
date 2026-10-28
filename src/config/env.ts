@@ -11,6 +11,8 @@ export interface Env {
   razorpayKeySecret: string;
   razorpayWebhookSecret: string;
   logLevel: string;
+  adminTotpKey: Buffer;
+  adminCookieSecure: boolean;
 }
 
 export const ENV = Symbol('ENV');
@@ -44,6 +46,9 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
   if (prod && (!razorpayKeyId || !razorpayKeySecret || !razorpayWebhookSecret)) {
     problems.push('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required in production');
   }
+  const totpKeyRaw = src.ADMIN_TOTP_KEY ?? '';
+  const adminTotpKey = Buffer.from(totpKeyRaw, 'base64');
+  if (adminTotpKey.length !== 32) problems.push('ADMIN_TOTP_KEY is required: 32 random bytes, base64 (openssl rand -base64 32)');
   const corsOrigins = list(src.CORS_ORIGINS);
   if (prod && corsOrigins.length === 0) problems.push('CORS_ORIGINS is required in production');
 
@@ -63,5 +68,8 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
     razorpayKeySecret,
     razorpayWebhookSecret,
     logLevel: src.LOG_LEVEL ?? (prod ? 'info' : 'debug'),
+    adminTotpKey,
+    // The admin cookie is Secure in production (HTTPS only); set ADMIN_COOKIE_SECURE=false only for local http.
+    adminCookieSecure: src.ADMIN_COOKIE_SECURE ? src.ADMIN_COOKIE_SECURE === 'true' : prod,
   };
 }

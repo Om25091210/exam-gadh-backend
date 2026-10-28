@@ -113,7 +113,15 @@ export class SessionService {
   }
 
   codeFor(reason?: SessionRevokeReason | null) {
-    return reason === SessionRevokeReason.REPLACED ? 'SESSION_REPLACED' : 'SESSION_REVOKED';
+    if (reason === SessionRevokeReason.REPLACED) return 'SESSION_REPLACED';
+    if (reason === SessionRevokeReason.SUSPENDED) return 'ACCOUNT_SUSPENDED';
+    return 'SESSION_REVOKED';
+  }
+
+  /** Ends every session of a user at once (suspension, admin action). Effective on the very next request. */
+  async revokeAllForUser(userId: string, reason: SessionRevokeReason) {
+    await this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokeReason: reason } });
+    this.cache.clear();
   }
 
   /** Per-request check used by the auth guard. */
@@ -123,9 +131,11 @@ export class SessionService {
       if (!hit.active) throw unauthorized(this.codeFor(hit.reason), 'This session is no longer active');
       return;
     }
-    const s = await this.prisma.session.findUnique({ where: { id: sessionId } });
-    const active = !!s && s.userId === userId && !s.revokedAt && s.expiresAt > new Date();
-    this.cache.set(sessionId, { active, reason: s?.revokeReason ?? undefined, until: Date.now() + SessionService.CACHE_MS });
-    if (!active) throw unauthorized(this.codeFor(s?.revokeReason), 'This session is no longer active');
+    const s = await this.prisma.session.findUnique({ where: { id: sessionId }, include: { user: { select: { status: true } } } });
+    const suspended = s?.user.status === 'suspended';
+    const active = !!s && s.userId === userId && !s.revokedAt && s.expiresAt > new Date() && !suspended;
+    const reason = suspended ? SessionRevokeReason.SUSPENDED : (s?.revokeReason ?? undefined);
+    this.cache.set(sessionId, { active, reason, until: Date.now() + SessionService.CACHE_MS });
+    if (!active) throw unauthorized(this.codeFor(reason), suspended ? 'Your account is suspended' : 'This session is no longer active');
   }
 }
