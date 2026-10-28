@@ -18,6 +18,7 @@ import { ImportExportModule } from './modules/import-export/import-export.module
 import { TestsAdminModule } from './modules/tests-admin/tests-admin.module';
 import { AdminOpsModule } from './modules/admin-ops/admin-ops.module';
 import { CommerceAdminModule } from './modules/commerce-admin/commerce-admin.module';
+import { ContentAdminModule } from './modules/content-admin/content-admin.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { Global, Module as NestModule } from '@nestjs/common';
@@ -64,6 +65,7 @@ class ConfigModule {}
     TestsAdminModule,
     AdminOpsModule,
     CommerceAdminModule,
+    ContentAdminModule,
     AttemptsModule,
   ],
   controllers: [HealthController, ContentController, UsersController],
