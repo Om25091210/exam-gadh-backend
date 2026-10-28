@@ -14,6 +14,7 @@ import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AuditModule } from './modules/audit/audit.service';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+import { ImportExportModule } from './modules/import-export/import-export.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { Global, Module as NestModule } from '@nestjs/common';
@@ -56,6 +57,7 @@ class ConfigModule {}
     AdminAuthModule,
     TaxonomyModule,
     QuestionsModule,
+    ImportExportModule,
     AttemptsModule,
   ],
   controllers: [HealthController, ContentController, UsersController],
