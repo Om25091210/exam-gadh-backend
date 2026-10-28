@@ -43,7 +43,9 @@ export interface MakeTestOptions {
   shuffle?: boolean;
   title?: string;
   questionIds?: string[];
-  kind?: 'mock' | 'live' | 'topic';
+  kind?: 'mock' | 'live' | 'topic' | 'pyq';
+  pyqYear?: number;
+  ownerUserId?: string;
 }
 
 /** Builds and publishes a test. Question i has correct option i % 4. */
@@ -51,7 +53,7 @@ export async function makeTest(prisma: PrismaService, o: MakeTestOptions = {}) {
   const n = o.n ?? 6;
   const qids = o.questionIds ?? (await makeQuestions(prisma, n, `Q${Math.random().toString(36).slice(2, 6)}-`));
   return prisma.$transaction(async (tx) => {
-    const test = await tx.test.create({ data: { examId: 'cgpsc', paperId: 'cgpsc_pre_gs', titleEn: o.title ?? 'Test', titleHi: o.title ?? 'टेस्ट', kind: o.kind ?? 'mock', mode: o.mode ?? 'static', access: o.access ?? 'free' } });
+    const test = await tx.test.create({ data: { examId: 'cgpsc', paperId: 'cgpsc_pre_gs', titleEn: o.title ?? 'Test', titleHi: o.title ?? 'टेस्ट', kind: o.kind ?? 'mock', mode: o.mode ?? 'static', access: o.access ?? 'free', pyqYear: o.pyqYear, ownerUserId: o.ownerUserId } });
     const v = await tx.testVersion.create({
       data: {
         testId: test.id,

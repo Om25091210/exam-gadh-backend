@@ -42,7 +42,7 @@ export const currentAffairSchema = z.object({
   topicCode: code.nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
   sourceUrl: url.nullable().optional(),
-  imageKey: s3key('ca-images').nullable().optional(),
+  imageKey: s3key('public/ca-images').nullable().optional(),
   quizTestId: z.string().uuid().nullable().optional(),
   access: access.default('free'),
   status: status.default('draft'),

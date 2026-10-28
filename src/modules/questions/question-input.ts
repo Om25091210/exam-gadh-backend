@@ -15,7 +15,7 @@ const base = z.object({
   body: z.unknown(),
   passage: passageInput.optional(),
   passageId: uuid.optional(),
-  imageKey: z.string().regex(/^question-images\/[A-Za-z0-9/_.-]{3,200}$/, 'invalid image key').nullable().optional(),
+  imageKey: z.string().regex(/^public\/question-images\/[A-Za-z0-9/_.-]{3,200}$/, 'invalid image key').nullable().optional(),
   source: z.enum(['original', 'pyq']).default('original'),
   pyqYear: z.number().int().min(1950).max(2100).nullable().optional(),
   pyqExamId: code.nullable().optional(),

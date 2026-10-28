@@ -34,7 +34,7 @@ export class AttemptsService {
 
   // ------------------------------------------------------------------ start / resume
   async startOrResume(userId: string, testId: string, opts: StartAttemptDto, clientId: string) {
-    const test = await this.prisma.test.findFirst({ where: { id: testId, archived: false } });
+    const test = await this.prisma.test.findFirst({ where: { id: testId, archived: false, OR: [{ ownerUserId: null }, { ownerUserId: userId }] } }); // someone else's personal set is simply not found
     if (!test || !test.publishedVersionId) throw notFound('Test');
     if (!(await this.access.canAccess(userId, test.access, test.examId))) {
       throw new ApiError(403, 'PAYMENT_REQUIRED', 'A paid plan is required for this test');
@@ -60,7 +60,7 @@ export class AttemptsService {
     // While a live window is open there is exactly one (ranked) attempt; afterwards extra attempts are practice only.
     const limit = windowOpen ? 1 : v.attemptLimit;
     if (limit && previous.length >= limit) throw conflict('ATTEMPT_LIMIT', 'No attempts left for this test');
-    const isPractice = opts.practice === true || previous.some((p) => p.isRanked) || (live && !windowOpen);
+    const isPractice = opts.practice === true || !!test.ownerUserId || previous.some((p) => p.isRanked) || (live && !windowOpen);
 
     const durationMs = (v.sectionalTimers ? totalSectionalMinutes(v.sections) : v.durationMin) * 60_000;
     let deadline = new Date(now.getTime() + durationMs);

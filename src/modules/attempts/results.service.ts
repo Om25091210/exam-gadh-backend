@@ -132,7 +132,7 @@ export class ResultsService {
   }
 
   async leaderboard(userId: string, testId: string, limit = 50) {
-    const test = await this.prisma.test.findFirst({ where: { id: testId, archived: false } });
+    const test = await this.prisma.test.findFirst({ where: { id: testId, archived: false, ownerUserId: null } });
     if (!test?.publishedVersionId) throw notFound('Test');
     const v = await this.versions.load(test.publishedVersionId);
     if (v.resultReleaseAt && this.clock.now() < v.resultReleaseAt) return { released: false, resultReleaseAt: v.resultReleaseAt, entries: [], me: null, total: 0 };

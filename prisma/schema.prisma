@@ -516,6 +516,8 @@ model Test {
   archived           Boolean     @default(false)
   // The version students currently see; set when a version is published.
   publishedVersionId String?     @unique @db.Uuid
+  // Personal practice sets (made from weak topics / revision) belong to one student and never appear in the catalog.
+  ownerUserId        String?     @db.Uuid
   createdById        String?     @db.Uuid
   createdAt          DateTime    @default(now())
 
@@ -525,6 +527,7 @@ model Test {
   series   TestSeriesItem[]
 
   @@index([examId, kind, archived])
+  @@index([ownerUserId])
 }
 
 // Everything that affects scoring or what a student sees is frozen when a version is published.

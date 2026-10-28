@@ -13,6 +13,9 @@ export interface Env {
   logLevel: string;
   adminTotpKey: Buffer;
   adminCookieSecure: boolean;
+  mediaBucket: string;
+  awsRegion: string;
+  mediaCdnDomain: string;
 }
 
 export const ENV = Symbol('ENV');
@@ -69,6 +72,9 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
     razorpayWebhookSecret,
     logLevel: src.LOG_LEVEL ?? (prod ? 'info' : 'debug'),
     adminTotpKey,
+    mediaBucket: src.MEDIA_BUCKET ?? '',
+    awsRegion: src.AWS_REGION ?? 'ap-south-1',
+    mediaCdnDomain: src.MEDIA_CDN_DOMAIN ?? '',
     // The admin cookie is Secure in production (HTTPS only); set ADMIN_COOKIE_SECURE=false only for local http.
     adminCookieSecure: src.ADMIN_COOKIE_SECURE ? src.ADMIN_COOKIE_SECURE === 'true' : prod,
   };

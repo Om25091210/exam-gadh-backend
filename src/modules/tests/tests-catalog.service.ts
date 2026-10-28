@@ -28,6 +28,7 @@ export class TestsCatalogService {
   async list(userId: string, f: CatalogFilter) {
     const where: Prisma.TestWhereInput = {
       archived: false,
+      ownerUserId: null, // personal practice sets never show in the public catalog
       publishedVersionId: { not: null },
       examId: f.examId,
       kind: f.kind,
@@ -94,7 +95,7 @@ export class TestsCatalogService {
 
   /** Everything the instructions screen needs before a student presses Start. */
   async detail(userId: string, testId: string) {
-    const test = await this.prisma.test.findFirst({ where: { id: testId, archived: false, publishedVersionId: { not: null } } });
+    const test = await this.prisma.test.findFirst({ where: { id: testId, archived: false, publishedVersionId: { not: null }, OR: [{ ownerUserId: null }, { ownerUserId: userId }] } });
     if (!test) throw notFound('Test');
     const v = await this.prisma.testVersion.findUniqueOrThrow({
       where: { id: test.publishedVersionId! },

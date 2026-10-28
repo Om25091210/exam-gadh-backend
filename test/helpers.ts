@@ -8,6 +8,8 @@ import { GoogleIdentity, GoogleVerifier } from '../src/auth/google-verifier';
 import { GatewayPayment, PaymentGateway } from '../src/billing/razorpay.gateway';
 import { Clock } from '../src/common/clock';
 import { unauthorized } from '../src/common/api-error';
+import { S3Client } from '@aws-sdk/client-s3';
+import { S3_CLIENT } from '../src/modules/storage/storage.service';
 import { AttemptFinalizer } from '../src/modules/attempts/attempt-finalizer';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -77,6 +79,9 @@ export async function createApp(): Promise<TestApp> {
     .useValue(gateway)
     .overrideProvider(Clock)
     .useValue(clock)
+    // signing is local maths; use obviously fake credentials so no real key ever appears in a test
+    .overrideProvider(S3_CLIENT)
+    .useValue(new S3Client({ region: 'ap-south-1', credentials: { accessKeyId: 'AKIAFAKEFAKEFAKEFAKE', secretAccessKey: 'fakefakefakefakefakefakefakefakefakefake' } }))
     .compile();
   const app = mod.createNestApplication({ rawBody: true });
   bootstrapApp(app, { logger: false });

@@ -8,3 +8,5 @@ process.env.RAZORPAY_WEBHOOK_SECRET = 'whsec_test_value';
 process.env.LOG_LEVEL = 'silent';
 process.env.THROTTLE_DISABLED = '1';
 process.env.ADMIN_TOTP_KEY = Buffer.alloc(32, 7).toString('base64');
+process.env.MEDIA_BUCKET = 'examgadh-test-media';
+process.env.MEDIA_CDN_DOMAIN = 'cdn.examgadh.test';

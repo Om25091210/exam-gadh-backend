@@ -71,6 +71,7 @@ export class TestsAdminService {
 
   async list(q: z.infer<typeof listTests>) {
     const where: Prisma.TestWhereInput = {
+      ownerUserId: null, // students' personal practice sets are not part of the admin catalog
       examId: q.examId,
       kind: q.kind,
       ...(q.q ? { OR: [{ titleEn: { contains: q.q, mode: 'insensitive' } }, { titleHi: { contains: q.q, mode: 'insensitive' } }] } : {}),

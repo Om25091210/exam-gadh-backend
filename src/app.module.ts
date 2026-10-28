@@ -19,6 +19,9 @@ import { TestsAdminModule } from './modules/tests-admin/tests-admin.module';
 import { AdminOpsModule } from './modules/admin-ops/admin-ops.module';
 import { CommerceAdminModule } from './modules/commerce-admin/commerce-admin.module';
 import { ContentAdminModule } from './modules/content-admin/content-admin.module';
+import { StorageModule } from './modules/storage/storage.service';
+import { StudentContentModule } from './modules/student-content/student-content.module';
+import { AdminUploadsController } from './modules/storage/uploads.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { Global, Module as NestModule } from '@nestjs/common';
@@ -66,9 +69,11 @@ class ConfigModule {}
     AdminOpsModule,
     CommerceAdminModule,
     ContentAdminModule,
+    StorageModule,
+    StudentContentModule,
     AttemptsModule,
   ],
-  controllers: [HealthController, ContentController, UsersController],
+  controllers: [HealthController, ContentController, UsersController, AdminUploadsController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
