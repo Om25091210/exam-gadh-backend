@@ -5,7 +5,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { bootstrapApp } from '../src/bootstrap';
 import { GoogleIdentity, GoogleVerifier } from '../src/auth/google-verifier';
-import { PaymentGateway } from '../src/billing/razorpay.gateway';
+import { GatewayPayment, PaymentGateway } from '../src/billing/razorpay.gateway';
 import { Clock } from '../src/common/clock';
 import { unauthorized } from '../src/common/api-error';
 import { AttemptFinalizer } from '../src/modules/attempts/attempt-finalizer';
@@ -21,12 +21,24 @@ class FakeGoogle extends GoogleVerifier {
 }
 
 let orderSeq = 0;
-class FakeGateway extends PaymentGateway {
+export class FakeGateway extends PaymentGateway {
+  /** What the pretend gateway reports in `listPayments`; tests set it. */
+  payments: GatewayPayment[] = [];
+  refunds: Array<{ paymentId: string; amountPaise: number }> = [];
+  failRefunds = false;
   get keyId() {
     return 'rzp_test_key';
   }
   async createOrder() {
     return { id: `order_fake_${++orderSeq}_${Date.now()}` };
+  }
+  async refund(paymentId: string, amountPaise: number) {
+    if (this.failRefunds) throw new Error('gateway down');
+    this.refunds.push({ paymentId, amountPaise });
+    return { id: `rfnd_${this.refunds.length}_${Date.now()}` };
+  }
+  async listPayments() {
+    return this.payments;
   }
 }
 
@@ -48,6 +60,7 @@ export class FakeClock extends Clock {
 }
 
 export interface TestApp {
+  gateway: FakeGateway;
   app: INestApplication;
   prisma: PrismaService;
   clock: FakeClock;
@@ -56,18 +69,19 @@ export interface TestApp {
 
 export async function createApp(): Promise<TestApp> {
   const clock = new FakeClock();
+  const gateway = new FakeGateway();
   const mod = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(GoogleVerifier)
     .useValue(new FakeGoogle())
     .overrideProvider(PaymentGateway)
-    .useValue(new FakeGateway())
+    .useValue(gateway)
     .overrideProvider(Clock)
     .useValue(clock)
     .compile();
   const app = mod.createNestApplication({ rawBody: true });
   bootstrapApp(app, { logger: false });
   await app.init();
-  return { app, prisma: app.get(PrismaService), clock, finalizer: app.get(AttemptFinalizer) };
+  return { app, prisma: app.get(PrismaService), clock, finalizer: app.get(AttemptFinalizer), gateway };
 }
 
 export async function resetDb(prisma: PrismaService) {

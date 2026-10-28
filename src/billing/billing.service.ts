@@ -18,7 +18,7 @@ const addMonths = (from: Date, months: number) => {
   return d;
 };
 
-interface CapturedPayment {
+export interface CapturedPayment {
   id: string;
   order_id: string;
   amount: number;
@@ -108,7 +108,7 @@ export class BillingService {
   }
 
   /** Idempotent: the unique Payment.razorpayPaymentId makes verify + webhook race-safe. */
-  private async markPaid(p: CapturedPayment, rawEvent?: unknown) {
+  async markPaid(p: CapturedPayment, rawEvent?: unknown) {
     const order = await this.prisma.order.findUnique({ where: { razorpayOrderId: p.order_id } });
     if (!order) {
       this.log.warn(`payment ${p.id} for unknown order ${p.order_id}`);
@@ -148,7 +148,9 @@ export class BillingService {
             orderId: order.id,
           },
         });
-        await tx.auditLog.create({ data: { actor: 'system', action: 'payment.captured', target: order.id, meta: { paymentId: p.id } } });
+        const [{ n: seq }] = await tx.$queryRaw<Array<{ n: bigint }>>`SELECT nextval('invoice_number_seq') AS n`;
+        await tx.invoice.create({ data: { orderId: order.id, number: `EG-${now.getUTCFullYear()}-${String(seq).padStart(6, '0')}` } });
+        await tx.auditLog.create({ data: { actor: 'system', actorType: 'system', action: 'payment.captured', targetType: 'order', target: order.id, meta: { paymentId: p.id } } });
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return; // already processed
