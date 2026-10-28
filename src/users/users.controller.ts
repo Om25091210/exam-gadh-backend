@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Language } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -31,6 +31,11 @@ class UpdateMeDto {
   @IsString()
   @MaxLength(30)
   targetExam?: string;
+
+  @ApiProperty({ required: false, description: 'Show my name on leaderboards' })
+  @IsOptional()
+  @IsBoolean()
+  showOnLeaderboard?: boolean;
 }
 
 @ApiTags('me')

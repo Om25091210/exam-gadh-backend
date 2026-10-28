@@ -11,7 +11,7 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 /** Share of the other ranked attempters this score beat (rank 1 of 100 -> 100, last of 100 -> 0). */
 export const percentileOf = (rank: number, total: number) => (total <= 1 ? 100 : round2(((total - rank) / (total - 1)) * 100));
 
-const displayName = (name: string) => {
+export const displayName = (name: string) => {
   const parts = name.trim().split(/\s+/);
   return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
 };
