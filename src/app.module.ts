@@ -15,6 +15,7 @@ import { AuditModule } from './modules/audit/audit.service';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { ImportExportModule } from './modules/import-export/import-export.module';
+import { TestsAdminModule } from './modules/tests-admin/tests-admin.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { Global, Module as NestModule } from '@nestjs/common';
@@ -58,6 +59,7 @@ class ConfigModule {}
     TaxonomyModule,
     QuestionsModule,
     ImportExportModule,
+    TestsAdminModule,
     AttemptsModule,
   ],
   controllers: [HealthController, ContentController, UsersController],

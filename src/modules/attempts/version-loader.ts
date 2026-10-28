@@ -46,6 +46,11 @@ export class VersionLoader {
     return v as LoadedVersion;
   }
 
+  /** Drops the in-memory copy (after an audited answer-key correction). */
+  invalidate(versionId: string) {
+    this.cache.delete(versionId);
+  }
+
   sectionPositionById(v: LoadedVersion): Map<string, number> {
     return new Map(v.sections.map((s) => [s.id, s.position]));
   }
