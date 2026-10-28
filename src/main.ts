@@ -2,12 +2,12 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { buildOpenApi, configureApp } from './bootstrap';
+import { buildOpenApi, bootstrapApp } from './bootstrap';
 import { ENV, Env } from './config/env';
 
 async function main() {
   const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: true });
-  configureApp(app);
+  bootstrapApp(app);
   const env = app.get<Env>(ENV);
   if (env.nodeEnv !== 'production') SwaggerModule.setup('docs', app, buildOpenApi(app));
   app.enableShutdownHooks();

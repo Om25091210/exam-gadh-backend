@@ -3,17 +3,20 @@ import { Test } from '@nestjs/testing';
 import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/bootstrap';
+import { bootstrapApp } from '../src/bootstrap';
 import { GoogleIdentity, GoogleVerifier } from '../src/auth/google-verifier';
 import { PaymentGateway } from '../src/billing/razorpay.gateway';
+import { Clock } from '../src/common/clock';
+import { unauthorized } from '../src/common/api-error';
+import { AttemptFinalizer } from '../src/modules/attempts/attempt-finalizer';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-/** "good:<sub>:<email>" is a valid fake Google token; anything else is rejected. */
+/** "good:<sub>:<email>[:<name>]" is a valid fake Google token; anything else is rejected. */
 class FakeGoogle extends GoogleVerifier {
   async verify(idToken: string): Promise<GoogleIdentity> {
-    const [tag, sub, email] = idToken.split(':');
-    if (tag !== 'good') throw Object.assign(new Error('bad'), { fake: true });
-    return { sub, email, name: `User ${sub}` };
+    const [tag, sub, email, name] = idToken.split(':');
+    if (tag !== 'good') throw unauthorized('INVALID_GOOGLE_TOKEN', 'Google sign-in could not be verified');
+    return { sub, email, name: name ?? `User ${sub}` };
   }
 }
 
@@ -27,26 +30,44 @@ class FakeGateway extends PaymentGateway {
   }
 }
 
-export async function createApp(): Promise<{ app: INestApplication; prisma: PrismaService }> {
+/** Controllable clock so deadlines can be crossed without sleeping. */
+export class FakeClock extends Clock {
+  private t = Date.now();
+  now() {
+    return new Date(this.t);
+  }
+  set(d: Date) {
+    this.t = d.getTime();
+  }
+  advance(ms: number) {
+    this.t += ms;
+  }
+  reset() {
+    this.t = Date.now();
+  }
+}
+
+export interface TestApp {
+  app: INestApplication;
+  prisma: PrismaService;
+  clock: FakeClock;
+  finalizer: AttemptFinalizer;
+}
+
+export async function createApp(): Promise<TestApp> {
+  const clock = new FakeClock();
   const mod = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(GoogleVerifier)
-    .useValue({
-      verify: async (t: string) => {
-        try {
-          return await new FakeGoogle().verify(t);
-        } catch {
-          const { unauthorized } = await import('../src/common/api-error');
-          throw unauthorized('INVALID_GOOGLE_TOKEN', 'Google sign-in could not be verified');
-        }
-      },
-    })
+    .useValue(new FakeGoogle())
     .overrideProvider(PaymentGateway)
     .useValue(new FakeGateway())
+    .overrideProvider(Clock)
+    .useValue(clock)
     .compile();
   const app = mod.createNestApplication({ rawBody: true });
-  configureApp(app, { logger: false });
+  bootstrapApp(app, { logger: false });
   await app.init();
-  return { app, prisma: app.get(PrismaService) };
+  return { app, prisma: app.get(PrismaService), clock, finalizer: app.get(AttemptFinalizer) };
 }
 
 export async function resetDb(prisma: PrismaService) {
@@ -56,14 +77,12 @@ export async function resetDb(prisma: PrismaService) {
   await prisma.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
 }
 
-export async function login(app: INestApplication, sub: string, deviceId = `device-${sub}-1`, platform = 'android') {
-  const res = await request(app.getHttpServer())
+export async function login(app: INestApplication, sub: string, deviceId = `device-${sub}-1`, platform = 'android', name?: string) {
+  return request(app.getHttpServer())
     .post('/v1/auth/google')
-    .send({ idToken: `good:${sub}:${sub}@example.com`, deviceId, platform });
-  return res;
+    .send({ idToken: `good:${sub}:${sub}@example.com${name ? ':' + name : ''}`, deviceId, platform });
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-export const rzpSignature = (secret: string, data: string | Buffer) =>
-  createHmac('sha256', secret).update(data).digest('hex');
+export const rzpSignature = (secret: string, data: string | Buffer) => createHmac('sha256', secret).update(data).digest('hex');

@@ -17,11 +17,45 @@ enum SessionRevokeReason {
   LOGOUT
   REFRESH_REUSE // a rotated refresh token was presented again
   ADMIN
+  SUSPENDED
+}
+
+enum UserStatus {
+  active
+  suspended
 }
 
 enum AccessLevel {
   free
   paid
+}
+
+enum QuestionType {
+  single
+  multi_statement
+  match
+  assertion_reason
+  chronology
+  passage
+}
+
+enum ContentStatus {
+  draft
+  in_review
+  published
+  archived
+}
+
+enum VersionStatus {
+  draft
+  published
+  archived
+}
+
+enum PaperStage {
+  prelims
+  mains
+  interview
 }
 
 enum TestKind {
@@ -31,6 +65,8 @@ enum TestKind {
   subject
   pyq
   csat
+  sectional
+  daily
   live
 }
 
@@ -45,6 +81,20 @@ enum AttemptStatus {
   expired
 }
 
+enum FinalizedBy {
+  client
+  auto_timer
+  admin
+}
+
+enum StaffRole {
+  SUPER_ADMIN
+  ADMIN
+  CONTENT_EDITOR
+  TEACHER
+  SUPPORT
+}
+
 enum OrderStatus {
   created
   paid
@@ -54,24 +104,38 @@ enum OrderStatus {
 
 // ---------------------------------------------------------------- identity
 model User {
-  id         String    @id @default(uuid()) @db.Uuid
-  googleSub  String    @unique
-  email      String    @unique
-  name       String
-  avatarUrl  String?
-  language   Language  @default(hi)
-  district   String?
-  targetExam String? // Exam.id
-  // Nullable on purpose: phone login/capture is deferred (requirements FR-002), the column keeps a later add cheap.
-  phone      String?   @unique
-  createdAt  DateTime  @default(now())
-  lastSeenAt DateTime?
-  deletedAt  DateTime?
+  id                String     @id @default(uuid()) @db.Uuid
+  googleSub         String     @unique
+  email             String     @unique
+  name              String
+  avatarUrl         String?
+  language          Language   @default(hi)
+  district          String?
+  targetExam        String? // Exam.id
+  // Nullable on purpose: phone login/capture is deferred (requirements FR-002).
+  phone             String?    @unique
+  status            UserStatus @default(active)
+  suspendedAt       DateTime?
+  suspendReason     String?
+  showOnLeaderboard Boolean    @default(true)
+  createdAt         DateTime   @default(now())
+  lastSeenAt        DateTime?
+  deletedAt         DateTime?
 
-  sessions     Session[]
-  attempts     Attempt[]
-  entitlements Entitlement[]
-  orders       Order[]
+  sessions      Session[]
+  attempts      Attempt[]
+  entitlements  Entitlement[]
+  orders        Order[]
+  enrollments   Enrollment[]
+  bookmarks     Bookmark[]
+  notes         UserNote[]
+  topicStats    UserTopicStat[]
+  notifications Notification[]
+  doubts        Doubt[]
+  results       AttemptResult[]
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Session {
@@ -95,22 +159,92 @@ model Session {
   @@index([userId, revokedAt])
 }
 
-// ---------------------------------------------------------------- taxonomy
-model Exam {
-  id           String  @id // cgpsc, si, patwari, mandi, food, other
-  nameEn       String
-  nameHi       String
-  shortEn      String
-  shortHi      String
-  correctMarks Float   @default(2)
-  negativeFrac Float   @default(0.3333333333)
-  mockSize     Int     @default(25)
-  hasMains     Boolean @default(false)
-  active       Boolean @default(true)
-  sort         Int     @default(0)
+model AdminUser {
+  id                 String    @id @default(uuid()) @db.Uuid
+  email              String    @unique
+  name               String
+  role               StaffRole
+  passwordHash       String
+  mustChangePassword Boolean   @default(false)
+  disabled           Boolean   @default(false)
+  // TOTP secret is stored encrypted (AES-256-GCM, key from env ADMIN_TOTP_KEY).
+  totpSecretEnc      String?
+  totpEnabledAt      DateTime?
+  recoveryCodeHashes String[]
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  createdById        String?   @db.Uuid
 
-  tests Test[]
-  plans PlanExam[]
+  sessions AdminSession[]
+}
+
+model AdminSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  adminId    String    @db.Uuid
+  tokenHash  String    @unique
+  csrfToken  String
+  // false until the TOTP code (or a recovery code) of this login was accepted
+  mfaDone    Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  ip         String?
+  userAgent  String?
+
+  admin AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, revokedAt])
+}
+
+// ---------------------------------------------------------------- exam configuration and taxonomy
+model Exam {
+  id               String  @id // cgpsc, si, patwari, mandi, food, other
+  nameEn           String
+  nameHi           String
+  shortEn          String
+  shortHi          String
+  hasMains         Boolean @default(false)
+  active           Boolean @default(true)
+  sort             Int     @default(0)
+  // Patterns are editable data. `patternVerified` stays false until an admin confirms the
+  // numbers against the current official notification.
+  patternVerified  Boolean @default(false)
+  patternSourceUrl String?
+  patternNote      String?
+
+  papers   ExamPaper[]
+  tests    Test[]
+  series   TestSeries[]
+  plans    PlanExam[]
+  calendar CalendarEvent[]
+}
+
+model ExamPaper {
+  id                    String     @id // e.g. cgpsc_pre_gs
+  examId                String
+  code                  String // PRE_GS, PRE_CSAT, MAINS_GS1 ...
+  stage                 PaperStage @default(prelims)
+  nameEn                String
+  nameHi                String
+  questionCount         Int
+  totalMarks            Float
+  durationMin           Int
+  correctMarks          Float      @default(2)
+  negativeFraction      Float      @default(0.3333333333) // fraction of correctMarks deducted per wrong answer
+  qualifyingPct         Float? // qualifying-only papers: minimum % (general)
+  qualifyingPctReserved Float? // minimum % for reserved categories
+  countsTowardMerit     Boolean    @default(true)
+  sort                  Int        @default(0)
+  active                Boolean    @default(true)
+
+  exam     Exam           @relation(fields: [examId], references: [id])
+  subjects PaperSubject[]
+  tests    Test[]
+
+  @@unique([examId, code])
 }
 
 model Subject {
@@ -121,6 +255,18 @@ model Subject {
 
   topics Topic[]
   notes  Note[]
+  papers PaperSubject[]
+}
+
+model PaperSubject {
+  paperId     String
+  subjectCode String
+  sort        Int    @default(0)
+
+  paper   ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  subject Subject   @relation(fields: [subjectCode], references: [code])
+
+  @@id([paperId, subjectCode])
 }
 
 model Topic {
@@ -132,12 +278,106 @@ model Topic {
   weight      Float  @default(1)
 
   subject   Subject    @relation(fields: [subjectCode], references: [code])
+  subtopics Subtopic[]
   questions Question[]
 
   @@index([subjectCode])
 }
 
+model Subtopic {
+  code      String @id
+  topicCode String
+  nameEn    String
+  nameHi    String
+  sort      Int    @default(0)
+
+  topic     Topic      @relation(fields: [topicCode], references: [code])
+  questions Question[]
+
+  @@index([topicCode])
+}
+
 // ---------------------------------------------------------------- content
+model Passage {
+  id        String   @id @default(uuid()) @db.Uuid
+  // { en: string, hi: string } (restricted markup, see sanitiser)
+  body      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  questions Question[]
+}
+
+model Question {
+  id            String        @id @default(uuid()) @db.Uuid
+  // Human reference used by imports/exports for upserts (e.g. CG_HIST-0042).
+  code          String?       @unique
+  type          QuestionType  @default(single)
+  topicCode     String
+  subtopicCode  String?
+  difficulty    Int           @default(2) // 1 easy .. 3 hard
+  status        ContentStatus @default(draft)
+  // Structured per type, validated by src/modules/questions/question.schemas.ts:
+  // { en: {...}, hi: {...} } where each language holds stem/options/explanation and type-specific parts.
+  body          Json
+  answer        Int // index of the correct option, 0..3
+  passageId     String?       @db.Uuid
+  imageKey      String? // S3 key
+  source        String        @default("original") // original | pyq
+  pyqYear       Int?
+  pyqExamId     String?
+  pyqPaperCode  String?
+  tags          String[]
+  hasEn         Boolean       @default(false)
+  hasHi         Boolean       @default(false)
+  contentHash   String // normalised hash of the English+Hindi stem, used for duplicate detection
+  version       Int           @default(1)
+  reportedCount Int           @default(0)
+  createdById   String?       @db.Uuid
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  topic    Topic             @relation(fields: [topicCode], references: [code])
+  subtopic Subtopic?         @relation(fields: [subtopicCode], references: [code])
+  passage  Passage?          @relation(fields: [passageId], references: [id])
+  versions QuestionVersion[]
+  reports  QuestionReport[]
+
+  @@index([status, topicCode, difficulty])
+  @@index([contentHash])
+  @@index([hasEn, hasHi])
+  @@index([pyqExamId, pyqYear])
+}
+
+model QuestionVersion {
+  questionId String   @db.Uuid
+  version    Int
+  body       Json
+  answer     Int
+  changedBy  String?
+  changedAt  DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, version])
+}
+
+model QuestionReport {
+  id         String    @id @default(uuid()) @db.Uuid
+  questionId String    @db.Uuid
+  userId     String    @db.Uuid
+  reason     String // wrong_answer | typo | unclear | translation | other
+  note       String?
+  status     String    @default("open") // open | resolved | dismissed
+  resolvedBy String?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
 model Note {
   id          String      @id
   subjectCode String
@@ -155,99 +395,449 @@ model Note {
   @@index([subjectCode, published])
 }
 
-model Question {
-  id         String   @id
-  topicCode  String
-  difficulty Int      @default(2) // 1 easy .. 3 hard
-  // { en:{q, o:[4], s}, hi:{q, o:[4], s} }  (s = explanation)
-  body       Json
-  answer     Int // 0..3
-  source     String   @default("original") // original | pyq
-  pyqYear    Int?
-  pyqPaper   String?
-  published  Boolean  @default(false)
-  version    Int      @default(1)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+model Material {
+  id          String        @id @default(uuid()) @db.Uuid
+  titleEn     String
+  titleHi     String
+  kind        String // pdf | video | link
+  subjectCode String?
+  topicCode   String?
+  examId      String?
+  fileKey     String? // S3 key (pdf)
+  url         String? // external link (video/link)
+  access      AccessLevel   @default(free)
+  status      ContentStatus @default(draft)
+  publishAt   DateTime?
+  sort        Int           @default(0)
+  createdAt   DateTime      @default(now())
 
-  topic Topic          @relation(fields: [topicCode], references: [code])
-  tests TestQuestion[]
-
-  @@index([topicCode, difficulty, published])
+  @@index([status, examId, subjectCode])
 }
 
-// ---------------------------------------------------------------- tests
+model CurrentAffair {
+  id         String        @id @default(uuid()) @db.Uuid
+  date       DateTime      @db.Date
+  category   String // CG | NAT
+  titleEn    String
+  titleHi    String
+  summaryEn  String
+  summaryHi  String
+  angleEn    String?
+  angleHi    String?
+  topicCode  String?
+  tags       String[]
+  sourceUrl  String?
+  imageKey   String?
+  quizTestId String?
+  access     AccessLevel   @default(free)
+  status     ContentStatus @default(draft)
+  publishAt  DateTime?
+  createdAt  DateTime      @default(now())
+
+  @@index([status, date])
+  @@index([category, date])
+}
+
+model DailyQuiz {
+  date   DateTime @id @db.Date
+  testId String
+}
+
+model Announcement {
+  id        String        @id @default(uuid()) @db.Uuid
+  kind      String        @default("update") // update | banner | alert
+  titleEn   String
+  titleHi   String
+  bodyEn    String
+  bodyHi    String
+  examId    String?
+  linkUrl   String?
+  pinned    Boolean       @default(false)
+  status    ContentStatus @default(draft)
+  publishAt DateTime?
+  expiresAt DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([status, publishAt])
+}
+
+model CalendarEvent {
+  id        String     @id @default(uuid()) @db.Uuid
+  examId    String
+  stage     PaperStage @default(prelims)
+  labelEn   String
+  labelHi   String
+  date      DateTime   @db.Date
+  sourceUrl String?
+
+  exam Exam @relation(fields: [examId], references: [id])
+
+  @@index([examId, date])
+}
+
+model Faq {
+  id       String @id @default(uuid()) @db.Uuid
+  keywords String
+  qEn      String
+  qHi      String
+  aEn      String
+  aHi      String
+}
+
+model InterviewQuestion {
+  id       String @id @default(uuid()) @db.Uuid
+  examId   String
+  category String
+  qEn      String
+  qHi      String
+  pointsEn String
+  pointsHi String
+
+  @@index([examId, category])
+}
+
+// ---------------------------------------------------------------- tests, versions, attempts
 model Test {
-  id           String      @id
-  examId       String
-  title        Json // { en, hi }
-  kind         TestKind
-  mode         TestMode    @default(static)
-  access       AccessLevel @default(free)
-  durationMin  Int
-  correctMarks Float? // overrides Exam.correctMarks
-  negativeFrac Float? // overrides Exam.negativeFrac
-  attemptLimit Int? // null = unlimited
-  shuffle      Boolean     @default(true)
-  startsAt     DateTime? // live tests
-  endsAt       DateTime? // live tests: last moment to start
-  published    Boolean     @default(false)
-  createdAt    DateTime    @default(now())
+  id                 String      @id @default(uuid()) @db.Uuid
+  examId             String
+  paperId            String?
+  titleEn            String
+  titleHi            String
+  kind               TestKind
+  mode               TestMode    @default(static)
+  access             AccessLevel @default(free)
+  subjectCode        String?
+  topicCode          String?
+  pyqYear            Int?
+  archived           Boolean     @default(false)
+  // The version students currently see; set when a version is published.
+  publishedVersionId String?     @unique @db.Uuid
+  createdById        String?     @db.Uuid
+  createdAt          DateTime    @default(now())
 
-  exam      Exam           @relation(fields: [examId], references: [id])
-  questions TestQuestion[]
-  attempts  Attempt[]
+  exam     Exam             @relation(fields: [examId], references: [id])
+  paper    ExamPaper?       @relation(fields: [paperId], references: [id])
+  versions TestVersion[]    @relation("TestVersions")
+  series   TestSeriesItem[]
 
-  @@index([examId, published, kind])
+  @@index([examId, kind, archived])
 }
 
-model TestQuestion {
-  testId     String
-  questionId String
-  position   Int
+// Everything that affects scoring or what a student sees is frozen when a version is published.
+model TestVersion {
+  id                    String        @id @default(uuid()) @db.Uuid
+  testId                String        @db.Uuid
+  version               Int
+  status                VersionStatus @default(draft)
+  durationMin           Int
+  correctMarks          Float
+  negativeFraction      Float
+  qualifyingPct         Float?
+  qualifyingPctReserved Float?
+  countsTowardMerit     Boolean       @default(true)
+  shuffleQuestions      Boolean       @default(true)
+  sectionalTimers       Boolean       @default(false)
+  attemptLimit          Int? // null = unlimited (extra attempts are practice, unranked)
+  startsAt              DateTime? // live tests
+  endsAt                DateTime? // live tests: last moment to enter
+  resultReleaseAt       DateTime? // null = results are available at submission
+  instructionsEn        String?
+  instructionsHi        String?
+  maxScore              Float?
+  questionCount         Int?
+  publishedAt           DateTime?
+  publishedById         String?       @db.Uuid
+  createdAt             DateTime      @default(now())
 
-  test     Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id])
+  test      Test                  @relation("TestVersions", fields: [testId], references: [id], onDelete: Cascade)
+  sections  TestSection[]
+  questions TestVersionQuestion[]
+  attempts  Attempt[]
+  results   AttemptResult[]
 
-  @@id([testId, questionId])
-  @@index([testId, position])
+  @@unique([testId, version])
+  @@index([status])
+}
+
+model TestSection {
+  id          String @id @default(uuid()) @db.Uuid
+  versionId   String @db.Uuid
+  position    Int
+  nameEn      String
+  nameHi      String
+  durationMin Int? // used when the version has sectional timers
+
+  version   TestVersion           @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  questions TestVersionQuestion[]
+
+  @@unique([versionId, position])
+}
+
+// A frozen copy of a question as it was when the version was published.
+model TestVersionQuestion {
+  id              String  @id @default(uuid()) @db.Uuid
+  versionId       String  @db.Uuid
+  sectionId       String? @db.Uuid
+  position        Int // global order inside the version
+  questionId      String  @db.Uuid
+  questionVersion Int
+  marks           Float? // per-question override; null = version default
+  // { type, body, answer, passage?, topicCode, subtopicCode, difficulty }
+  snapshot        Json? // null while the version is a draft; filled when published
+
+  version TestVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  section TestSection? @relation(fields: [sectionId], references: [id])
+
+  @@unique([versionId, position])
+  @@index([versionId, sectionId])
+}
+
+model TestSeries {
+  id        String        @id @default(uuid()) @db.Uuid
+  examId    String
+  titleEn   String
+  titleHi   String
+  descEn    String?
+  descHi    String?
+  access    AccessLevel   @default(paid)
+  status    ContentStatus @default(draft)
+  sort      Int           @default(0)
+  createdAt DateTime      @default(now())
+
+  exam        Exam             @relation(fields: [examId], references: [id])
+  items       TestSeriesItem[]
+  enrollments Enrollment[]
+}
+
+model TestSeriesItem {
+  seriesId String @db.Uuid
+  testId   String @db.Uuid
+  position Int
+
+  series TestSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  test   Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@id([seriesId, testId])
+}
+
+model Enrollment {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  seriesId  String   @db.Uuid
+  source    String // free | entitlement | admin
+  createdAt DateTime @default(now())
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series TestSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seriesId])
 }
 
 model Attempt {
-  id           String        @id @default(uuid()) @db.Uuid
-  userId       String        @db.Uuid
-  testId       String
-  status       AttemptStatus @default(in_progress)
-  startedAt    DateTime      @default(now())
-  deadlineAt   DateTime
-  submittedAt  DateTime?
-  order        String[] // shuffled question ids served to this attempt
-  score        Float?
-  correct      Int?
-  wrong        Int?
-  unattempted  Int?
-  maxScore     Float?
-  timeSpentSec Int?
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @db.Uuid
+  testVersionId   String        @db.Uuid
+  attemptNo       Int
+  status          AttemptStatus @default(in_progress)
+  // Only the first non-practice attempt is ranked (enforced by a partial unique index).
+  isRanked        Boolean       @default(false)
+  isPractice      Boolean       @default(false)
+  startedAt       DateTime      @default(now())
+  deadlineAt      DateTime
+  submittedAt     DateTime?
+  finalizedBy     FinalizedBy?
+  submitKey       String? // client idempotency key of the final submission
+  // TestVersionQuestion ids in the order served to this student
+  questionOrder   String[]
+  currentIndex    Int           @default(0)
+  currentSection  Int           @default(0)
+  // { "<sectionPosition>": ISO start time } when the version has sectional timers
+  sectionStarts   Json?
+  language        Language      @default(hi)
+  // Multi-tab / device policy: the client that currently owns the attempt.
+  lockClientId    String?
+  lockHeartbeatAt DateTime?
+  stateSeq        Int           @default(0)
+  lastSyncAt      DateTime?
 
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  test    Test            @relation(fields: [testId], references: [id])
+  version TestVersion     @relation(fields: [testVersionId], references: [id])
   answers AttemptAnswer[]
+  result  AttemptResult?
 
-  @@index([userId, testId])
-  @@index([testId, score])
+  @@unique([userId, testVersionId, attemptNo])
+  @@index([status, deadlineAt])
+  @@index([userId, status])
 }
 
 model AttemptAnswer {
   attemptId    String   @db.Uuid
-  questionId   String
+  tvqId        String   @db.Uuid // TestVersionQuestion.id
   selected     Int? // 0..3, null = cleared
-  flagged      Boolean  @default(false)
+  visited      Boolean  @default(false)
+  marked       Boolean  @default(false)
   timeSpentSec Int      @default(0)
+  seq          Int      @default(0) // client sequence; stale writes (lower seq) are ignored
   updatedAt    DateTime @updatedAt
 
   attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
-  @@id([attemptId, questionId])
+  @@id([attemptId, tvqId])
+}
+
+// 1:1 with Attempt. The primary key makes "exactly one final result" a database guarantee.
+model AttemptResult {
+  attemptId         String   @id @db.Uuid
+  userId            String   @db.Uuid
+  testVersionId     String   @db.Uuid
+  isRanked          Boolean
+  score             Float
+  maxScore          Float
+  correct           Int
+  wrong             Int
+  skipped           Int
+  negativeDeducted  Float
+  accuracyPct       Float
+  timeSpentSec      Int
+  // [{ position, nameEn, nameHi, score, maxScore, correct, wrong, skipped }]
+  sectionScores     Json
+  // { "<topicCode>": { attempted, correct, wrong, marks, timeSec } }
+  topicScores       Json
+  qualifiedGeneral  Boolean?
+  qualifiedReserved Boolean?
+  submittedAt       DateTime
+  computedAt        DateTime @default(now())
+
+  attempt Attempt     @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version TestVersion @relation(fields: [testVersionId], references: [id])
+
+  @@index([testVersionId, isRanked, score(sort: Desc), timeSpentSec])
+  @@index([userId, submittedAt])
+}
+
+model UserTopicStat {
+  userId    String   @db.Uuid
+  topicCode String
+  attempted Int      @default(0)
+  correct   Int      @default(0)
+  timeSec   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicCode])
+}
+
+// ---------------------------------------------------------------- learning helpers
+model Bookmark {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  kind      String // question | material | current_affair
+  refId     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, refId])
+}
+
+model UserNote {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  questionId String   @db.Uuid
+  text       String
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  kind      String // result_ready | live_test | doubt_answered | announcement | plan_expiring
+  titleEn   String
+  titleHi   String
+  bodyEn    String
+  bodyHi    String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model NotificationTemplate {
+  key     String @id
+  titleEn String
+  titleHi String
+  bodyEn  String
+  bodyHi  String
+}
+
+// ---------------------------------------------------------------- doubts, planner
+model Doubt {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  contextType     String // question | note | current_affair | free
+  contextId       String?
+  examId          String?
+  topicCode       String?
+  status          String    @default("open") // open | answered | closed
+  slaDueAt        DateTime
+  firstResponseAt DateTime?
+  answeredAt      DateTime?
+  rating          Int?
+  reopened        Boolean   @default(false)
+  abuse           Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages DoubtMessage[]
+
+  @@index([status, slaDueAt])
+  @@index([userId, createdAt])
+}
+
+model DoubtMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  doubtId        String   @db.Uuid
+  authorType     String // student | staff
+  authorId       String
+  text           String
+  attachmentKeys String[]
+  createdAt      DateTime @default(now())
+
+  doubt Doubt @relation(fields: [doubtId], references: [id], onDelete: Cascade)
+
+  @@index([doubtId, createdAt])
+}
+
+model CannedReply {
+  id     String @id @default(uuid()) @db.Uuid
+  title  String
+  bodyEn String
+  bodyHi String
+}
+
+model MentorRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  examId      String
+  hoursPerDay Float
+  examDate    DateTime? @db.Date
+  status      String    @default("open") // open | sent
+  plan        Json?
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status])
 }
 
 // ---------------------------------------------------------------- commerce
@@ -342,12 +932,50 @@ model Coupon {
 
 // ---------------------------------------------------------------- ops
 model AuditLog {
-  id        String   @id @default(uuid()) @db.Uuid
-  actor     String // user id, admin id or 'system'
-  action    String
-  target    String?
-  meta      Json?
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid()) @db.Uuid
+  actor      String // user id, admin id or 'system'
+  actorType  String   @default("system") // user | admin | system
+  action     String
+  target     String?
+  targetType String?
+  before     Json?
+  after      Json?
+  ip         String?
+  meta       Json?
+  createdAt  DateTime @default(now())
 
   @@index([createdAt])
+  @@index([actor, createdAt])
+  @@index([targetType, target])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+model ImportJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  adminId     String    @db.Uuid
+  kind        String // questions
+  fileName    String
+  status      String // dry_run | committed | failed
+  rowsTotal   Int
+  rowsOk      Int
+  rowsFailed  Int
+  errors      Json // [{ row, field?, message }]
+  rows        Json // parsed, validated rows awaiting commit
+  createdAt   DateTime  @default(now())
+  committedAt DateTime?
+
+  @@index([adminId, createdAt])
+}
+
+model Invoice {
+  id       String   @id @default(uuid()) @db.Uuid
+  orderId  String   @unique @db.Uuid
+  number   String   @unique // EG-2026-000001
+  issuedAt DateTime @default(now())
 }

@@ -8,7 +8,8 @@ import { BillingModule } from './billing/billing.module';
 import { ENV, Env, loadEnv } from './config/env';
 import { ContentController } from './content/content.controller';
 import { HealthController } from './health/health.controller';
-import { MocktestsModule } from './mocktests/mocktests.module';
+import { AttemptsModule } from './modules/attempts/attempts.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { Global, Module as NestModule } from '@nestjs/common';
@@ -46,7 +47,8 @@ class ConfigModule {}
     AccessModule,
     AuthModule,
     BillingModule,
-    MocktestsModule,
+    SettingsModule,
+    AttemptsModule,
   ],
   controllers: [HealthController, ContentController, UsersController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -7,7 +7,7 @@ import { badRequest } from './common/api-error';
 import { ENV, Env } from './config/env';
 
 /** Shared by main.ts and the e2e tests so both run the exact same pipeline. */
-export function configureApp(app: INestApplication, opts: { logger?: boolean } = {}) {
+export function bootstrapApp(app: INestApplication, opts: { logger?: boolean } = {}) {
   const env = app.get<Env>(ENV);
   if (opts.logger !== false) app.useLogger(app.get(Logger));
   app.use(helmet());

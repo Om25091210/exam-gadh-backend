@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { writeFileSync } from 'node:fs';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
-import { buildOpenApi, configureApp } from '../src/bootstrap';
+import { buildOpenApi, bootstrapApp } from '../src/bootstrap';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 async function main() {
@@ -15,7 +15,7 @@ async function main() {
     .useValue({})
     .compile();
   const app = mod.createNestApplication();
-  configureApp(app, { logger: false });
+  bootstrapApp(app, { logger: false });
   await app.init();
   writeFileSync('openapi.json', JSON.stringify(buildOpenApi(app), null, 2));
   await app.close();
