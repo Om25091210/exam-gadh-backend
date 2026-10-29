@@ -22,6 +22,9 @@ import { ContentAdminModule } from './modules/content-admin/content-admin.module
 import { StorageModule } from './modules/storage/storage.service';
 import { StudentContentModule } from './modules/student-content/student-content.module';
 import { StudentMeModule } from './modules/student-me/student-me.module';
+import { MentorModule } from './modules/mentor/mentor.module';
+import { DoubtsModule } from './modules/doubts/doubts.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AdminUploadsController } from './modules/storage/uploads.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
@@ -73,6 +76,9 @@ class ConfigModule {}
     StorageModule,
     StudentContentModule,
     StudentMeModule,
+    MentorModule,
+    DoubtsModule,
+    NotificationsModule,
     AttemptsModule,
   ],
   controllers: [HealthController, ContentController, UsersController, AdminUploadsController],
