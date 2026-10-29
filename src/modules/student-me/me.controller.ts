@@ -1,13 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Req, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { AuthUser, JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { zod } from '../../common/zod';
+import { Throttle } from '@nestjs/throttler';
+import { AccountService } from './account.service';
 import { AnalyticsService } from './analytics.service';
 import { HomeService } from './home.service';
 import { bookmarkBody, MeService, noteBody, periodQuery, practiceBody, reportBody, revisionQuery } from './me.service';
 
+const deleteBody = z.object({ confirm: z.literal('DELETE') });
 const analyticsQuery = z.object({ days: z.coerce.number().int().min(7).max(365).default(90) });
 const bookmarkKind = z.object({ kind: z.enum(['question', 'material', 'current_affair']).optional() });
 const bookmarkParams = z.object({ kind: z.enum(['question', 'material', 'current_affair']), refId: z.string().uuid() });
@@ -21,6 +24,7 @@ export class MeController {
     private readonly home: HomeService,
     private readonly analytics: AnalyticsService,
     private readonly me: MeService,
+    private readonly account: AccountService,
   ) {}
 
   @Get('home')
@@ -93,5 +97,18 @@ export class MeController {
   @Get('me/orders/:id/receipt')
   receipt(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.me.receipt(u.id, id);
+  }
+
+  @Get('me/export')
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  exportData(@CurrentUser() u: AuthUser) {
+    return this.account.export(u.id);
+  }
+
+  @Delete('me')
+  @HttpCode(204)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  async deleteAccount(@CurrentUser() u: AuthUser, @Body(zod(deleteBody)) _b: z.infer<typeof deleteBody>, @Req() req: { ip?: string }) {
+    await this.account.delete(u.id, req.ip);
   }
 }

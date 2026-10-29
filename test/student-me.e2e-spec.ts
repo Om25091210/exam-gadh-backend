@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { baseTaxonomy, makeTest } from './fixtures';
+import { baseTaxonomy, makeQuestions, makeTest } from './fixtures';
 import { bearer, createApp, FakeClock, login, resetDb } from './helpers';
 
 describe('student: personal data', () => {
@@ -255,5 +255,71 @@ describe('student: personal data', () => {
       await http().get(`/v1/me/orders/${pending.id}/receipt`).set(s.h).expect(404);
       await http().get(`/v1/me/orders/${paid.id}/receipt`).set(other.h).expect(404);
     });
+  });
+});
+
+describe('student: account data', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let clock: FakeClock;
+  beforeAll(async () => ({ app, prisma, clock } = await createApp()));
+  afterAll(() => app.close());
+  beforeEach(async () => {
+    clock.reset();
+    await resetDb(prisma);
+    await baseTaxonomy(prisma);
+  });
+  const http = () => request(app.getHttpServer());
+
+  it('lists exams with their papers and marking rules', async () => {
+    const r = (await http().get('/v1/exams').expect(200)).body;
+    expect(r[0].id).toBe('cgpsc');
+    expect(r[0].papers[0]).toMatchObject({ code: 'PRE_GS', questionCount: 10, durationMin: 10 });
+  });
+
+  it('exports everything the student owns, and nothing secret or foreign', async () => {
+    const l = await login(app, 'stu', 'device-stu-1', 'android', 'Asha Verma');
+    const h = bearer(l.body.accessToken);
+    const other = await login(app, 'oth', 'device-oth-1', 'android', 'Other Person');
+    const t = await makeTest(prisma, { n: 4 });
+    const a = (await http().post(`/v1/tests/${t.testId}/attempts`).set(h).set('x-client-id', 'tab').send({}).expect(200)).body;
+    await http().put(`/v1/attempts/${a.attemptId}/state`).set(h).set('x-client-id', 'tab').send({ seq: 1, answers: [{ qid: t.tvqIds[0], selected: 0, visited: true, seq: 1 }] }).expect(200);
+    await http().post(`/v1/attempts/${a.attemptId}/submit`).set(h).send({ submitKey: 'k' }).expect(200);
+    await http().post('/v1/doubts').set(h).send({ text: 'A question for the teacher' }).expect(201);
+    const doc = (await http().get('/v1/me/export').set(h).expect(200)).body;
+    expect(doc.profile).toMatchObject({ name: 'Asha Verma', email: expect.any(String) });
+    expect(doc.attempts[0].answers[0]).toMatchObject({ selected: 0 });
+    expect(doc.results).toHaveLength(1);
+    expect(doc.doubts[0].messages[0].text).toBe('A question for the teacher');
+    const text = JSON.stringify(doc);
+    expect(text).not.toContain('googleSub');
+    expect(text).not.toContain('Other Person');
+    expect(text).not.toContain(other.body.user.id);
+    await http().get('/v1/me/export').expect(401);
+  });
+
+  it('deleting the account needs explicit confirmation, erases personal data, ends the session and keeps orders', async () => {
+    const l = await login(app, 'stu', 'device-stu-1', 'android', 'Asha Verma');
+    const h = bearer(l.body.accessToken);
+    const id = l.body.user.id as string;
+    await prisma.plan.create({ data: { id: 'pass', nameEn: 'Pass', nameHi: 'पास', prices: { '3': 1 } } });
+    await prisma.order.create({ data: { userId: id, planId: 'pass', months: 3, amountPaise: 100, status: 'paid', razorpayOrderId: 'order_x' } });
+    await prisma.userNote.create({ data: { userId: id, questionId: (await makeQuestions(prisma, 1, 'D'))[0], text: 'private' } });
+    await http().post('/v1/doubts').set(h).send({ text: 'Please help me here' }).expect(201);
+    await http().delete('/v1/me').set(h).send({}).expect(400);
+    await http().delete('/v1/me').set(h).send({ confirm: 'yes' }).expect(400);
+    await http().delete('/v1/me').set(h).send({ confirm: 'DELETE' }).expect(204);
+    await http().get('/v1/me').set(h).expect(401); // the session is gone
+    const u = await prisma.user.findUniqueOrThrow({ where: { id } });
+    expect(u).toMatchObject({ name: 'Deleted user', avatarUrl: null, phone: null, showOnLeaderboard: false });
+    expect(u.email).toContain('deleted.invalid');
+    expect(u.deletedAt).not.toBeNull();
+    expect(await prisma.userNote.count({ where: { userId: id } })).toBe(0);
+    expect(await prisma.doubt.count({ where: { userId: id } })).toBe(0);
+    expect(await prisma.order.count({ where: { userId: id } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { action: 'account.delete', target: id } })).toBe(1);
+    // the same Google account can start again as a brand-new student
+    const again = await login(app, 'stu', 'device-stu-1', 'android', 'Asha Verma');
+    expect(again.body.user.id).not.toBe(id);
   });
 });

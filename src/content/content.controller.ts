@@ -22,7 +22,7 @@ export class ContentController {
 
   @Get('exams')
   exams() {
-    return this.prisma.exam.findMany({ where: { active: true }, orderBy: { sort: 'asc' } });
+    return this.prisma.exam.findMany({ where: { active: true }, orderBy: { sort: 'asc' }, include: { papers: { where: { active: true }, orderBy: { sort: 'asc' }, select: { id: true, code: true, stage: true, nameEn: true, nameHi: true, questionCount: true, totalMarks: true, durationMin: true, correctMarks: true, negativeFraction: true, qualifyingPct: true, qualifyingPctReserved: true, countsTowardMerit: true } } } });
   }
 
   @Get('subjects')
