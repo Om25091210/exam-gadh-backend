@@ -63,6 +63,12 @@ export class AttemptsController {
     return this.attempts.startOrResume(u.id, id, dto, clientIdOf(client));
   }
 
+  @Get('attempts/:id')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  open(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Headers('x-client-id') client?: string) {
+    return this.attempts.open(u.id, id, clientIdOf(client));
+  }
+
   @Put('attempts/:id/state')
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
   save(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveStateDto, @Headers('x-client-id') client?: string) {

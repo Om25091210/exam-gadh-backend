@@ -112,6 +112,7 @@ export class ResultsService {
         const outcome = a?.selected == null ? 'skipped' : a.selected === snap.answer ? 'correct' : 'wrong';
         return {
           qid: id,
+          questionId: q.questionId, // lets the client match bookmarks and notes, which belong to the question itself
           position: i + 1,
           sectionPos: q.sectionId ? (secPos.get(q.sectionId) ?? 0) : 0,
           ...publicQuestionView(snap),

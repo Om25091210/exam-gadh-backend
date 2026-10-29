@@ -62,6 +62,23 @@ describe('test engine', () => {
   });
 
   describe('start, resume, answer-key protection', () => {
+    it('reopens a running attempt by id (refresh / resume link) with saved state, and refuses finished or foreign attempts', async () => {
+      const t = await makeTest(prisma);
+      const s = await student('a');
+      const other = await student('b');
+      const a = (await start(s.h, t.testId).expect(200)).body;
+      await save(s.h, a.attemptId, { seq: 1, currentIndex: 2, answers: [{ qid: a.questions[0].qid, selected: 1, visited: true, seq: 1 }] }).expect(200);
+      const again = (await http().get(`/v1/attempts/${a.attemptId}`).set(s.h).set('x-client-id', 'tab-1').expect(200)).body;
+      expect(again.attemptId).toBe(a.attemptId);
+      expect(again.state.currentIndex).toBe(2);
+      expect(again.state.answers[0]).toMatchObject({ selected: 1 });
+      expect(JSON.stringify(again)).not.toContain('explanation');
+      await http().get(`/v1/attempts/${a.attemptId}`).set(other.h).expect(404);
+      await submit(s.h, a.attemptId).expect(200);
+      expect((await http().get(`/v1/attempts/${a.attemptId}`).set(s.h).expect(409)).body.error.code).toBe('ATTEMPT_CLOSED');
+      await http().get('/v1/attempts/not-a-uuid').set(s.h).expect(400);
+    });
+
     it('serves frozen questions without answers or explanations and resumes the same attempt', async () => {
       const t = await makeTest(prisma);
       const s = await student('a');
@@ -286,6 +303,7 @@ describe('test engine', () => {
       expect(review.body.questions[0].en.explanation).toContain('explanation');
       expect(review.body.questions[0].hi.explanation).toContain('व्याख्या');
       expect(review.body.questions[0]).toHaveProperty('correctOption');
+      expect(review.body.questions[0].questionId).toBe(t.questionIds[0]);
     });
 
     it('never exposes the key while the attempt is running', async () => {

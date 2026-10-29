@@ -104,6 +104,20 @@ export class AttemptsService {
     }
   }
 
+  /**
+   * Reopens a running attempt by its id (page refresh, "Resume" link). Opening it makes this tab/device the owner,
+   * under the same multi-tab policy as starting. A finished attempt answers 409 ATTEMPT_CLOSED.
+   */
+  async open(userId: string, attemptId: string, clientId: string) {
+    const attempt = await this.owned(userId, attemptId);
+    if (attempt.status === 'in_progress' && attempt.deadlineAt.getTime() + GRACE_MS <= this.clock.now().getTime()) {
+      await this.finalizer.finalize(attempt.id, 'auto_timer');
+      throw new ApiError(409, 'ATTEMPT_CLOSED', 'This attempt is already finished');
+    }
+    if (attempt.status !== 'in_progress') throw new ApiError(409, 'ATTEMPT_CLOSED', 'This attempt is already finished');
+    return this.resume(attempt, clientId);
+  }
+
   private async resume(attempt: Attempt, clientId: string) {
     const now = this.clock.now();
     const policy = await this.settings.get('attempt.multiClientPolicy');

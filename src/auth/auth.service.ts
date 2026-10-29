@@ -16,6 +16,7 @@ export const publicUser = (u: User) => ({
   language: u.language,
   district: u.district,
   targetExam: u.targetExam,
+  showOnLeaderboard: u.showOnLeaderboard,
 });
 
 @Injectable()
