@@ -3,7 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ENV, Env } from '../config/env';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { GoogleOAuthVerifier, GoogleVerifier } from './google-verifier';
+import { DevGoogleVerifier, GoogleOAuthVerifier, GoogleVerifier } from './google-verifier';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { SessionService } from './session.service';
 
@@ -16,7 +16,7 @@ import { SessionService } from './session.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, SessionService, JwtAuthGuard, { provide: GoogleVerifier, useClass: GoogleOAuthVerifier }],
+  providers: [AuthService, SessionService, JwtAuthGuard, { provide: GoogleVerifier, inject: [ENV], useFactory: (env: Env): GoogleVerifier => (env.googleVerifier === 'dev' ? new DevGoogleVerifier() : new GoogleOAuthVerifier(env)) }],
   exports: [SessionService, JwtAuthGuard, JwtModule],
 })
 export class AuthModule {}

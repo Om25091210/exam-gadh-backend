@@ -6,6 +6,8 @@ export interface Env {
   accessTtlSec: number;
   refreshTtlDays: number;
   googleClientIds: string[];
+  /** 'dev' accepts `dev:<sub>:<email>:<name>` tokens so browser tests can sign in without Google. Never allowed in production. */
+  googleVerifier: 'google' | 'dev';
   corsOrigins: string[];
   razorpayKeyId: string;
   razorpayKeySecret: string;
@@ -41,7 +43,9 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
   if (jwtSecret && jwtSecret.length < 32) problems.push('JWT_SECRET must be at least 32 characters');
   const databaseUrl = need('DATABASE_URL');
   const googleClientIds = list(src.GOOGLE_CLIENT_IDS);
-  if (googleClientIds.length === 0) problems.push('GOOGLE_CLIENT_IDS is required (comma separated)');
+  const googleVerifier = src.GOOGLE_VERIFIER === 'dev' ? 'dev' : 'google';
+  if (googleVerifier === 'dev' && prod) problems.push('GOOGLE_VERIFIER=dev is not allowed in production');
+  if (googleVerifier === 'google' && googleClientIds.length === 0) problems.push('GOOGLE_CLIENT_IDS is required (comma separated)');
 
   const razorpayKeyId = src.RAZORPAY_KEY_ID ?? '';
   const razorpayKeySecret = src.RAZORPAY_KEY_SECRET ?? '';
@@ -66,6 +70,7 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
     accessTtlSec: Number(src.ACCESS_TTL_SEC ?? 900),
     refreshTtlDays: Number(src.REFRESH_TTL_DAYS ?? 30),
     googleClientIds,
+    googleVerifier,
     corsOrigins,
     razorpayKeyId,
     razorpayKeySecret,

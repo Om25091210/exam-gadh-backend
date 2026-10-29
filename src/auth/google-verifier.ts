@@ -36,3 +36,16 @@ export class GoogleOAuthVerifier extends GoogleVerifier {
     }
   }
 }
+
+/**
+ * Development and browser-test sign-in: `dev:<sub>:<email>:<name>`. Selected only with GOOGLE_VERIFIER=dev,
+ * which the configuration loader refuses when NODE_ENV=production.
+ */
+@Injectable()
+export class DevGoogleVerifier extends GoogleVerifier {
+  async verify(idToken: string): Promise<GoogleIdentity> {
+    const [tag, sub, email, ...name] = idToken.split(':');
+    if (tag !== 'dev' || !sub || !email) throw unauthorized('INVALID_GOOGLE_TOKEN', 'Google sign-in could not be verified');
+    return { sub, email: email.toLowerCase(), name: name.join(':') || email };
+  }
+}
