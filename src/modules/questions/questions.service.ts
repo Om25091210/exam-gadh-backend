@@ -207,7 +207,7 @@ export class QuestionsService {
     const where = { status };
     const [total, items] = await Promise.all([
       this.prisma.questionReport.count({ where }),
-      this.prisma.questionReport.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page.page - 1) * page.pageSize, take: page.pageSize, include: { question: { select: { id: true, code: true, topicCode: true, status: true } } } }),
+      this.prisma.questionReport.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page.page - 1) * page.pageSize, take: page.pageSize, include: { question: { select: { id: true, code: true, topicCode: true, status: true, body: true, answer: true } } } }),
     ]);
     return { page: page.page, pageSize: page.pageSize, total, items };
   }
