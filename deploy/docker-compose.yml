@@ -1,0 +1,30 @@
+# Runs on the EC2 app server (/opt/examgadh). Images are built on the server (arm64) by server-deploy.sh.
+services:
+  api:
+    image: examgadh-api:latest
+    env_file: /opt/examgadh/api.env
+    restart: unless-stopped
+    expose: ["3000"]
+  web:
+    image: examgadh-web:latest
+    restart: unless-stopped
+    expose: ["3000"]
+    depends_on: [api]
+  admin:
+    image: examgadh-admin:latest
+    restart: unless-stopped
+    expose: ["3000"]
+    depends_on: [api]
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      WEB_HOST: ${WEB_HOST}
+      ADMIN_HOST: ${ADMIN_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [web, admin]
+volumes:
+  caddy_data:

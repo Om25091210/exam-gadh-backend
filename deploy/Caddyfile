@@ -1,0 +1,9 @@
+# Automatic HTTPS (Let's Encrypt). The browser only talks to these two hosts; /v1 is proxied to the API by the Next apps.
+{$WEB_HOST} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+{$ADMIN_HOST} {
+	encode zstd gzip
+	reverse_proxy admin:3000
+}
