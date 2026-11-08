@@ -8,11 +8,15 @@ services:
   web:
     image: examgadh-web:latest
     restart: unless-stopped
+    environment:
+      API_URL: http://api:3000
     expose: ["3000"]
     depends_on: [api]
   admin:
     image: examgadh-admin:latest
     restart: unless-stopped
+    environment:
+      API_URL: http://api:3000
     expose: ["3000"]
     depends_on: [api]
   caddy:
