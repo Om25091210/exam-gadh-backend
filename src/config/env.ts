@@ -15,6 +15,8 @@ export interface Env {
   logLevel: string;
   adminTotpKey: Buffer;
   adminCookieSecure: boolean;
+  /** TEMPORARY testing switch: staff sign in with e-mail + password only (no 2FA, no forced password change). Off by default. */
+  adminTestingLogin: boolean;
   mediaBucket: string;
   awsRegion: string;
   mediaCdnDomain: string;
@@ -81,6 +83,7 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
     awsRegion: src.AWS_REGION ?? 'ap-south-1',
     mediaCdnDomain: src.MEDIA_CDN_DOMAIN ?? '',
     // The admin cookie is Secure in production (HTTPS only); set ADMIN_COOKIE_SECURE=false only for local http.
+    adminTestingLogin: src.ADMIN_TESTING_LOGIN === 'true',
     adminCookieSecure: src.ADMIN_COOKIE_SECURE ? src.ADMIN_COOKIE_SECURE === 'true' : prod,
   };
 }

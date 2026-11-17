@@ -73,7 +73,7 @@ export class AdminGuard implements CanActivate {
       }
     }
     if (!session.mfaDone && !preMfa) throw new ApiError(401, 'MFA_REQUIRED', 'Finish two-factor sign-in first');
-    if (session.admin.mustChangePassword && meta<boolean>(PASSWORD_CHANGE_OK_KEY) !== true) {
+    if (session.admin.mustChangePassword && !this.env.adminTestingLogin && meta<boolean>(PASSWORD_CHANGE_OK_KEY) !== true) {
       throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your password before continuing');
     }
     if (permission) {

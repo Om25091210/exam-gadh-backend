@@ -27,14 +27,42 @@ CORS_ORIGINS=https://$WEB_HOST,https://$ADMIN_HOST
 MEDIA_BUCKET=$BUCKET
 AWS_REGION=ap-south-1
 LOG_LEVEL=info
+# TEMPORARY testing switch (SSM /examgadh/dev/admin_testing_login = true): staff sign in with e-mail + password only
+ADMIN_TESTING_LOGIN=$(p admin_testing_login 2>/dev/null || echo false)
 ENVEOF
 umask 022
+
+# keep the database password current (RDS rotates it): config + a systemd timer that runs refresh-db-url.sh
+cat > db.conf <<CONFEOF
+DB_SECRET_ARN=$(p db_secret_arn)
+DB_HOST=$(p db_host)
+WEB_HOST=$WEB_HOST
+ADMIN_HOST=$ADMIN_HOST
+CONFEOF
 
 for src in backend frontend; do
   rm -rf "src-$src" && mkdir "src-$src"
   aws s3 cp "s3://$BUCKET/deploy/$src.tgz" - | tar xz -C "src-$src"
 done
-cp src-backend/deploy/docker-compose.yml src-backend/deploy/Caddyfile .
+cp src-backend/deploy/docker-compose.yml src-backend/deploy/Caddyfile src-backend/deploy/refresh-db-url.sh .
+chmod +x refresh-db-url.sh
+cat > /etc/systemd/system/examgadh-db-refresh.service <<'UNITEOF'
+[Unit]
+Description=Refresh the ExamGadh database password in api.env
+[Service]
+Type=oneshot
+ExecStart=/opt/examgadh/refresh-db-url.sh
+UNITEOF
+cat > /etc/systemd/system/examgadh-db-refresh.timer <<'UNITEOF'
+[Unit]
+Description=Check the database password every 10 minutes
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+[Install]
+WantedBy=timers.target
+UNITEOF
+systemctl daemon-reload && systemctl enable --now examgadh-db-refresh.timer
 
 docker build -t examgadh-api-build --target build src-backend
 docker build -t examgadh-api src-backend

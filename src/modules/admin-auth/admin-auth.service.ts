@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AdminSession, AdminUser } from '@prisma/client';
 import { ApiError, badRequest, unauthorized } from '../../common/api-error';
 import { Clock } from '../../common/clock';
@@ -27,7 +27,9 @@ export class AdminAuthService {
     private readonly clock: Clock,
     private readonly audit: AuditService,
     @Inject(ENV) private readonly env: Env,
-  ) {}
+  ) {
+    if (env.adminTestingLogin) new Logger('AdminAuth').warn('ADMIN_TESTING_LOGIN is ON: staff can sign in without two-factor codes. Testing only; turn it off before launch.');
+  }
 
   private invalid() {
     return unauthorized('INVALID_CREDENTIALS', 'E-mail or password is wrong');
@@ -59,8 +61,11 @@ export class AdminAuthService {
       throw this.invalid();
     }
     await this.prisma.adminUser.update({ where: { id: admin.id }, data: { failedLogins: 0, lockedUntil: null } });
-    const issued = await this.issueSession(admin.id, false, ip, userAgent);
-    await this.audit.log({ actorType: 'admin', actor: admin.id, action: 'admin.login.password_ok', ip });
+    // TEMPORARY testing switch: the password alone completes the sign-in (no 2FA). Several staff may be signed in at once (sessions are never shared or revoked here).
+    const testing = this.env.adminTestingLogin;
+    const issued = await this.issueSession(admin.id, testing, ip, userAgent);
+    await this.audit.log({ actorType: 'admin', actor: admin.id, action: testing ? 'admin.login.testing_mode' : 'admin.login.password_ok', ip });
+    if (testing) return { issued, body: { mfaRequired: false, mfaEnrolled: !!admin.totpEnabledAt, mustChangePassword: false, csrfToken: issued.csrfToken } };
     return {
       issued,
       body: { mfaRequired: true, mfaEnrolled: !!admin.totpEnabledAt, mustChangePassword: admin.mustChangePassword, csrfToken: issued.csrfToken },
@@ -159,7 +164,7 @@ export class AdminAuthService {
   }
 
   me(p: AdminPrincipal) {
-    return { id: p.id, email: p.email, name: p.name, role: p.role, permissions: permissionsOf(p.role), csrfToken: p.csrfToken, mustChangePassword: p.mustChangePassword };
+    return { id: p.id, email: p.email, name: p.name, role: p.role, permissions: permissionsOf(p.role), csrfToken: p.csrfToken, mustChangePassword: p.mustChangePassword && !this.env.adminTestingLogin };
   }
 
   async changePassword(p: AdminPrincipal, current: string, next: string, ip?: string) {
