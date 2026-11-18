@@ -12,6 +12,11 @@ export interface Env {
   razorpayKeyId: string;
   razorpayKeySecret: string;
   razorpayWebhookSecret: string;
+  /** Real-looking Razorpay credentials are present (placeholders such as 'unset' do not count). Payments and signature checks stay off otherwise. */
+  paymentsEnabled: boolean;
+  /** A real webhook secret is configured, so Razorpay's webhook signature can be trusted. */
+  webhookEnabled: boolean;
+  razorpayMode: 'live' | 'test' | 'off';
   logLevel: string;
   adminTotpKey: Buffer;
   adminCookieSecure: boolean;
@@ -55,6 +60,11 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
   if (prod && (!razorpayKeyId || !razorpayKeySecret || !razorpayWebhookSecret)) {
     problems.push('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required in production');
   }
+  // A placeholder secret (e.g. 'unset') must never make signatures verifiable: anyone could sign with a known key.
+  const PLACEHOLDER = /^(unset|change-?me.*|todo|xxx+|test|secret|placeholder)$/i;
+  const paymentsEnabled = /^rzp_(test|live)_[A-Za-z0-9]{3,}$/.test(razorpayKeyId) && razorpayKeySecret.length >= 12 && !PLACEHOLDER.test(razorpayKeySecret);
+  const webhookEnabled = razorpayWebhookSecret.length >= 8 && !PLACEHOLDER.test(razorpayWebhookSecret);
+  const razorpayMode = !paymentsEnabled ? 'off' : razorpayKeyId.startsWith('rzp_live_') ? 'live' : 'test';
   const totpKeyRaw = src.ADMIN_TOTP_KEY ?? '';
   const adminTotpKey = Buffer.from(totpKeyRaw, 'base64');
   if (adminTotpKey.length !== 32) problems.push('ADMIN_TOTP_KEY is required: 32 random bytes, base64 (openssl rand -base64 32)');
@@ -77,6 +87,9 @@ export function loadEnv(src: NodeJS.ProcessEnv = process.env): Env {
     razorpayKeyId,
     razorpayKeySecret,
     razorpayWebhookSecret,
+    paymentsEnabled,
+    webhookEnabled,
+    razorpayMode,
     logLevel: src.LOG_LEVEL ?? (prod ? 'info' : 'debug'),
     adminTotpKey,
     mediaBucket: src.MEDIA_BUCKET ?? '',

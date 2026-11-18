@@ -22,4 +22,26 @@ describe('loadEnv', () => {
   it('requires client ids when using real Google', () => {
     expect(() => loadEnv({ ...base, GOOGLE_CLIENT_IDS: '', NODE_ENV: 'development' })).toThrow(/GOOGLE_CLIENT_IDS/);
   });
+
+  describe('razorpay credentials', () => {
+    const rz = (o: Record<string, string>) => loadEnv({ ...base, NODE_ENV: 'development', ...o });
+    it('is off when nothing is set', () => {
+      expect(rz({}).razorpayMode).toBe('off');
+      expect(rz({}).paymentsEnabled).toBe(false);
+    });
+    it('never treats a placeholder secret as configured (it would make signatures forgeable)', () => {
+      const e = rz({ RAZORPAY_KEY_ID: 'unset', RAZORPAY_KEY_SECRET: 'unset', RAZORPAY_WEBHOOK_SECRET: 'unset' });
+      expect(e.paymentsEnabled).toBe(false);
+      expect(e.webhookEnabled).toBe(false);
+      expect(rz({ RAZORPAY_KEY_ID: 'rzp_live_AbC123xyz', RAZORPAY_KEY_SECRET: 'unset' }).paymentsEnabled).toBe(false);
+    });
+    it('detects live and test mode from the key id', () => {
+      expect(rz({ RAZORPAY_KEY_ID: 'rzp_live_AbC123xyz', RAZORPAY_KEY_SECRET: 'a-long-real-secret' }).razorpayMode).toBe('live');
+      expect(rz({ RAZORPAY_KEY_ID: 'rzp_test_AbC123xyz', RAZORPAY_KEY_SECRET: 'a-long-real-secret' }).razorpayMode).toBe('test');
+    });
+    it('needs a separate real webhook secret for webhooks', () => {
+      expect(rz({ RAZORPAY_WEBHOOK_SECRET: 'whsec_long_enough' }).webhookEnabled).toBe(true);
+      expect(rz({ RAZORPAY_WEBHOOK_SECRET: 'short' }).webhookEnabled).toBe(false);
+    });
+  });
 });

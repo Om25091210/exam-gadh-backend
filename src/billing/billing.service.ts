@@ -33,7 +33,14 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly gateway: PaymentGateway,
     @Inject(ENV) private readonly env: Env,
-  ) {}
+  ) {
+    this.log.log(`Razorpay mode: ${env.razorpayMode} (webhook signature ${env.webhookEnabled ? 'enabled' : 'DISABLED: set RAZORPAY_WEBHOOK_SECRET'})`);
+  }
+
+  /** Orders, confirmations and webhooks all stop unless real credentials are configured: no signature is ever checked against a placeholder key. */
+  private requirePayments() {
+    if (!this.env.paymentsEnabled) throw new ApiError(503, 'PAYMENTS_UNAVAILABLE', 'Payments are not configured');
+  }
 
   async plans() {
     const plans = await this.prisma.plan.findMany({ where: { active: true }, include: { exams: true }, orderBy: { id: 'asc' } });
@@ -49,6 +56,7 @@ export class BillingService {
   }
 
   async createOrder(userId: string, planId: string, months: number) {
+    this.requirePayments();
     const plan = await this.prisma.plan.findFirst({ where: { id: planId, active: true } });
     if (!plan) throw notFound('Plan');
     const price = (plan.prices as Record<string, number>)[String(months)];
@@ -74,6 +82,7 @@ export class BillingService {
 
   /** Client-side confirmation: a valid signature proves Razorpay captured this payment for this order. */
   async verify(userId: string, orderId: string, paymentId: string, signature: string) {
+    this.requirePayments();
     const order = await this.prisma.order.findFirst({ where: { razorpayOrderId: orderId, userId } });
     if (!order) throw notFound('Order');
     const expected = hmacHex(this.env.razorpayKeySecret, `${orderId}|${paymentId}`);
@@ -83,9 +92,10 @@ export class BillingService {
   }
 
   async handleWebhook(rawBody: Buffer | undefined, signature: string | undefined) {
+    if (!this.env.webhookEnabled) throw new ApiError(503, 'WEBHOOK_UNAVAILABLE', 'Webhook is not configured');
     if (!rawBody || !signature) throw badRequest('INVALID_SIGNATURE', 'Missing signature');
     const expected = hmacHex(this.env.razorpayWebhookSecret, rawBody);
-    if (!this.env.razorpayWebhookSecret || !safeEqHex(expected, signature)) {
+    if (!safeEqHex(expected, signature)) {
       throw badRequest('INVALID_SIGNATURE', 'Webhook signature mismatch');
     }
     const event = JSON.parse(rawBody.toString('utf8')) as {

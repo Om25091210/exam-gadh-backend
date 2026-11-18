@@ -36,7 +36,7 @@ export class RazorpayGateway extends PaymentGateway {
 
   constructor(@Inject(ENV) private readonly env: Env) {
     super();
-    if (env.razorpayKeyId && env.razorpayKeySecret) {
+    if (env.paymentsEnabled) {
       this.client = new Razorpay({ key_id: env.razorpayKeyId, key_secret: env.razorpayKeySecret });
     }
   }
