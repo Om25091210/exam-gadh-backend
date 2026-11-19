@@ -56,6 +56,16 @@ export class StudentContentController {
     return this.svc.materials(u.id, q);
   }
 
+  @Put('notes/:id/like')
+  likeNote(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.setNoteLike(u.id, id, true);
+  }
+
+  @Delete('notes/:id/like')
+  unlikeNote(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.setNoteLike(u.id, id, false);
+  }
+
   @Get('materials/:id')
   material(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.material(u.id, id);

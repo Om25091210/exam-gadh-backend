@@ -128,6 +128,7 @@ model User {
   orders        Order[]
   enrollments   Enrollment[]
   bookmarks     Bookmark[]
+  noteLikes     NoteLike[]
   notes         UserNote[]
   topicStats    UserTopicStat[]
   notifications Notification[]
@@ -394,9 +395,23 @@ model Note {
   published   Boolean     @default(false)
   updatedAt   DateTime    @updatedAt
 
-  subject Subject @relation(fields: [subjectCode], references: [code])
+  subject Subject    @relation(fields: [subjectCode], references: [code])
+  likes   NoteLike[]
 
   @@index([subjectCode, published])
+}
+
+/// A student's "like" on a published note (one per student per note).
+model NoteLike {
+  userId    String   @db.Uuid
+  noteId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, noteId])
+  @@index([noteId])
 }
 
 model Material {

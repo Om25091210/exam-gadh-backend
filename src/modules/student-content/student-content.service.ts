@@ -113,6 +113,16 @@ export class StudentContentService {
     return { id: m.id, titleEn: m.titleEn, titleHi: m.titleHi, kind: m.kind, url: m.kind === 'pdf' ? null : m.url, downloadUrl: m.kind === 'pdf' && m.fileKey ? await this.storage.presignDownload(m.fileKey, `${m.titleEn}.pdf`) : null };
   }
 
+  // ------------------------------------------------------------------ note likes (reading the notes lives in ContentController)
+  /** Idempotent: liking twice leaves one like. */
+  async setNoteLike(userId: string, id: string, like: boolean) {
+    const n = await this.prisma.note.findFirst({ where: { id, published: true }, select: { id: true } });
+    if (!n) throw notFound('Note');
+    if (like) await this.prisma.noteLike.upsert({ where: { userId_noteId: { userId, noteId: id } }, update: {}, create: { userId, noteId: id } });
+    else await this.prisma.noteLike.deleteMany({ where: { userId, noteId: id } });
+    return { liked: like, likes: await this.prisma.noteLike.count({ where: { noteId: id } }) };
+  }
+
   // ------------------------------------------------------------------ previous years' papers
   async pyq(userId: string, q: z.infer<typeof pyqQuery>) {
     const tests = await this.prisma.test.findMany({ where: { kind: 'pyq', archived: false, ownerUserId: null, publishedVersionId: { not: null }, examId: q.examId, pyqYear: q.year }, orderBy: [{ pyqYear: 'desc' }, { titleEn: 'asc' }], include: { paper: { select: { code: true, nameEn: true, nameHi: true } } } });

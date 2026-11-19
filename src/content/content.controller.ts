@@ -36,11 +36,13 @@ export class ContentController {
   async notes(@CurrentUser() user: AuthUser, @Query('subject') subject?: string) {
     const rows = await this.prisma.note.findMany({
       where: { published: true, ...(subject ? { subjectCode: subject } : {}) },
-      select: { id: true, subjectCode: true, titleEn: true, titleHi: true, access: true, version: true },
+      select: { id: true, subjectCode: true, titleEn: true, titleHi: true, access: true, version: true, sections: true, updatedAt: true, _count: { select: { likes: true } } },
       orderBy: { id: 'asc' },
     });
-    const paid = await this.access.hasPaidAccess(user.id);
-    return rows.map((n) => ({ ...n, locked: n.access === AccessLevel.paid && !paid }));
+    const [paid, liked] = await Promise.all([this.access.hasPaidAccess(user.id), this.prisma.noteLike.findMany({ where: { userId: user.id }, select: { noteId: true } })]);
+    const mine = new Set(liked.map((l) => l.noteId));
+    // the list never carries the body (a paid note shows only its title): just how long it takes to read and how many liked it
+    return rows.map(({ sections, _count, ...n }) => ({ ...n, locked: n.access === AccessLevel.paid && !paid, likes: _count.likes, liked: mine.has(n.id), sectionCount: Array.isArray(sections) ? sections.length : 0, readMinutes: Math.max(1, Math.round(JSON.stringify(sections ?? []).split(/\s+/).length / 220)) }));
   }
 
   @Get('notes/:id')
@@ -52,6 +54,7 @@ export class ContentController {
     if (!(await this.access.canAccess(user.id, note.access))) {
       throw new ApiError(403, 'PAYMENT_REQUIRED', 'A paid plan is required for this note');
     }
-    return note;
+    const [likes, liked] = await Promise.all([this.prisma.noteLike.count({ where: { noteId: id } }), this.prisma.noteLike.findUnique({ where: { userId_noteId: { userId: user.id, noteId: id } } })]);
+    return { ...note, likes, liked: !!liked };
   }
 }
