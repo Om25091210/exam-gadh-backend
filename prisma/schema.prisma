@@ -129,6 +129,8 @@ model User {
   enrollments   Enrollment[]
   bookmarks     Bookmark[]
   noteLikes     NoteLike[]
+  battlePlayers BattlePlayer[]
+  battleRating  BattleRating?
   notes         UserNote[]
   topicStats    UserTopicStat[]
   notifications Notification[]
@@ -1000,4 +1002,67 @@ model Invoice {
   orderId  String   @unique @db.Uuid
   number   String   @unique // EG-2026-000001
   issuedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- 1-v-1 battles
+enum BattleStatus {
+  live
+  finished
+  cancelled
+}
+
+/// One 1-v-1 quiz battle. The questions are frozen when it starts; the server runs the clock and the scoring.
+model Battle {
+  id          String       @id @default(uuid()) @db.Uuid
+  status      BattleStatus @default(live)
+  /// human = two students, bot = a labelled practice partner
+  mode        String
+  topicCode   String?
+  questionIds String[]
+  roundMs     Int
+  startedAt   DateTime     @default(now())
+  finishedAt  DateTime?
+
+  players BattlePlayer[]
+
+  @@index([finishedAt])
+}
+
+model BattlePlayer {
+  id          String  @id @default(uuid()) @db.Uuid
+  battleId    String  @db.Uuid
+  /// null for the practice bot
+  userId      String? @db.Uuid
+  isBot       Boolean @default(false)
+  displayName String
+  score       Int     @default(0)
+  correct     Int     @default(0)
+  totalTimeMs Int     @default(0)
+  /// [{ i, option, ms, correct, points }]
+  answers     Json    @default("[]")
+  /// win | loss | draw
+  result      String?
+  pointsDelta Int     @default(0)
+
+  battle Battle @relation(fields: [battleId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, battleId])
+  @@index([battleId])
+}
+
+/// A student's battle points (also used to match opponents of similar strength).
+model BattleRating {
+  userId     String   @id @db.Uuid
+  points     Int      @default(0)
+  played     Int      @default(0)
+  wins       Int      @default(0)
+  losses     Int      @default(0)
+  draws      Int      @default(0)
+  bestStreak Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([points])
 }

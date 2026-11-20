@@ -201,15 +201,24 @@ export class MeService {
     const days = q.period === 'week' ? 7 : q.period === 'month' ? 30 : 36500;
     const since = new Date(now.getTime() - days * 86_400_000);
     const rows = await this.prisma.$queryRaw<Array<{ userId: string; score: number; tests: bigint; time: bigint; rk: bigint; name: string; avatarUrl: string | null; show: boolean }>>`
-      WITH agg AS (
+      WITH tests AS (
         SELECT r."userId", sum(r.score) AS score, count(*) AS tests, sum(r."timeSpentSec") AS time
         FROM "AttemptResult" r JOIN "TestVersion" v ON v.id = r."testVersionId" JOIN "Test" t ON t.id = v."testId"
         WHERE r."isRanked" AND t."ownerUserId" IS NULL AND r."submittedAt" >= ${since} AND (v."resultReleaseAt" IS NULL OR v."resultReleaseAt" <= ${now})
         GROUP BY r."userId"),
+      -- points from battles against real students also count (practice-partner games do not)
+      battles AS (
+        SELECT p."userId", sum(p."pointsDelta") AS pts
+        FROM "BattlePlayer" p JOIN "Battle" b ON b.id = p."battleId"
+        WHERE p."userId" IS NOT NULL AND b.mode = 'human' AND b.status = 'finished' AND b."finishedAt" >= ${since}
+        GROUP BY p."userId"),
+      agg AS (
+        SELECT COALESCE(tests."userId", battles."userId") AS "userId", COALESCE(tests.score, 0) + COALESCE(battles.pts, 0) AS score, COALESCE(tests.tests, 0) AS tests, COALESCE(tests.time, 0) AS time
+        FROM tests FULL JOIN battles ON battles."userId" = tests."userId"),
       ranked AS (SELECT agg.*, rank() OVER (ORDER BY score DESC, time ASC) AS rk FROM agg)
       SELECT ranked.*, u.name, u."avatarUrl", u."showOnLeaderboard" AS show FROM ranked JOIN "User" u ON u.id = ranked."userId"
       WHERE ranked.rk <= ${q.limit * 2} OR ranked."userId" = ${userId}::uuid ORDER BY ranked.rk, ranked."userId"`;
-    const total = rows.length ? Number((await this.prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(DISTINCT r."userId") AS n FROM "AttemptResult" r JOIN "TestVersion" v ON v.id = r."testVersionId" JOIN "Test" t ON t.id = v."testId" WHERE r."isRanked" AND t."ownerUserId" IS NULL AND r."submittedAt" >= ${since} AND (v."resultReleaseAt" IS NULL OR v."resultReleaseAt" <= ${now})`)[0].n) : 0;
+    const total = rows.length ? Number((await this.prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM (SELECT r."userId" FROM "AttemptResult" r JOIN "TestVersion" v ON v.id = r."testVersionId" JOIN "Test" t ON t.id = v."testId" WHERE r."isRanked" AND t."ownerUserId" IS NULL AND r."submittedAt" >= ${since} AND (v."resultReleaseAt" IS NULL OR v."resultReleaseAt" <= ${now}) UNION SELECT p."userId" FROM "BattlePlayer" p JOIN "Battle" b ON b.id = p."battleId" WHERE p."userId" IS NOT NULL AND b.mode = 'human' AND b.status = 'finished' AND b."finishedAt" >= ${since}) u`)[0].n) : 0;
     const shape = (r: (typeof rows)[number]) => ({ rank: Number(r.rk), name: displayName(r.name), avatarUrl: r.avatarUrl, score: Math.round(r.score * 100) / 100, tests: Number(r.tests), timeSpentSec: Number(r.time), isMe: r.userId === userId });
     // Hidden profiles keep their rank internally; they are just not listed (except to themselves).
     const entries = rows.filter((r) => r.show || r.userId === userId).filter((r) => Number(r.rk) <= q.limit * 2).slice(0, q.limit).map(shape);

@@ -1,7 +1,13 @@
 # Automatic HTTPS (Let's Encrypt). The browser only talks to these two hosts; /v1 is proxied to the API by the Next apps.
 {$WEB_HOST} {
 	encode zstd gzip
-	reverse_proxy web:3000
+	# 1-v-1 battles: the phone's socket goes straight to the API (the Next app cannot proxy websockets)
+	handle /socket.io/* {
+		reverse_proxy api:3000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
 }
 {$ADMIN_HOST} {
 	encode zstd gzip

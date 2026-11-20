@@ -24,6 +24,7 @@ import { StudentContentModule } from './modules/student-content/student-content.
 import { StudentMeModule } from './modules/student-me/student-me.module';
 import { MentorModule } from './modules/mentor/mentor.module';
 import { DoubtsModule } from './modules/doubts/doubts.module';
+import { BattleModule } from './modules/battle/battle.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AdminUploadsController } from './modules/storage/uploads.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -78,6 +79,7 @@ class ConfigModule {}
     StudentMeModule,
     MentorModule,
     DoubtsModule,
+    BattleModule,
     NotificationsModule,
     AttemptsModule,
   ],
