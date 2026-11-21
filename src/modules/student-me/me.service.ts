@@ -1,7 +1,9 @@
+import { randomInt } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { badRequest, conflict, notFound } from '../../common/api-error';
+import { ApiError, badRequest, conflict, notFound } from '../../common/api-error';
+import { istDateString, istDayStart } from '../../common/ist';
 import { Clock } from '../../common/clock';
 import { PrismaService } from '../../prisma/prisma.service';
 import { displayName } from '../attempts/results.service';
@@ -239,6 +241,44 @@ export class MeService {
     if (!o || !inv) throw notFound('Receipt');
     const pay = o.payments.find((p) => p.status === 'captured' || p.status === 'refunded');
     return { number: inv.number, issuedAt: inv.issuedAt, customer: { name: o.user.name, email: o.user.email }, plan: { id: o.planId, nameEn: o.plan.nameEn, nameHi: o.plan.nameHi }, months: o.months, amountPaise: o.amountPaise, currency: o.currency, couponCode: o.couponCode, paymentId: pay?.razorpayPaymentId ?? null, method: pay?.method ?? null, status: o.status };
+  }
+
+  // ------------------------------------------------------------------ daily bonus chest
+  /** Weighted roll: mostly small, sometimes a surprise. Decided on the server. */
+  private rollChest(): number {
+    const r = randomInt(100);
+    return r < 70 ? 5 : r < 95 ? 10 : 25;
+  }
+
+  /** The chest unlocks once the student has finished a test, a practice set or a battle today (India time). */
+  async chest(userId: string) {
+    const now = this.clock.now();
+    const day = istDateString(now);
+    const start = istDayStart(day);
+    const [opened, tests, battles] = await Promise.all([
+      this.prisma.dailyChest.findUnique({ where: { userId_day: { userId, day } } }),
+      this.prisma.attemptResult.count({ where: { userId, submittedAt: { gte: start } } }),
+      this.prisma.battlePlayer.count({ where: { userId, battle: { status: 'finished', finishedAt: { gte: start } } } }),
+    ]);
+    const eligible = tests + battles > 0;
+    return { day, eligible, opened: !!opened, points: opened?.points ?? null, available: eligible && !opened };
+  }
+
+  async openChest(userId: string) {
+    const c = await this.chest(userId);
+    if (c.opened) throw conflict('CHEST_ALREADY_OPENED', 'Today\'s chest is already opened');
+    if (!c.eligible) throw new ApiError(409, 'CHEST_LOCKED', 'Finish a test, a practice set or a battle to unlock today\'s chest');
+    const points = this.rollChest();
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.dailyChest.create({ data: { userId, day: c.day, points } });
+        await tx.battleRating.upsert({ where: { userId }, create: { userId, points }, update: { points: { increment: points } } });
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw conflict('CHEST_ALREADY_OPENED', 'Today\'s chest is already opened');
+      throw e;
+    }
+    return { points };
   }
 }
 

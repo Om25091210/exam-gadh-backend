@@ -32,6 +32,17 @@ export class MeController {
     return this.home.home(u.id);
   }
 
+  @Get('me/chest')
+  chest(@CurrentUser() u: AuthUser) {
+    return this.me.chest(u.id);
+  }
+
+  @Post('me/chest/open')
+  @HttpCode(200)
+  openChest(@CurrentUser() u: AuthUser) {
+    return this.me.openChest(u.id);
+  }
+
   @Get('me/analytics')
   getAnalytics(@CurrentUser() u: AuthUser, @Query(zod(analyticsQuery)) q: z.infer<typeof analyticsQuery>) {
     return this.analytics.analytics(u.id, q.days);

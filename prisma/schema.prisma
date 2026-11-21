@@ -131,6 +131,7 @@ model User {
   noteLikes     NoteLike[]
   battlePlayers BattlePlayer[]
   battleRating  BattleRating?
+  dailyChests   DailyChest[]
   notes         UserNote[]
   topicStats    UserTopicStat[]
   notifications Notification[]
@@ -1065,4 +1066,17 @@ model BattleRating {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([points])
+}
+
+/// The once-a-day bonus chest: opened after the student has practised that day. The reward is rolled on the server.
+model DailyChest {
+  userId    String   @db.Uuid
+  /// India date the chest belongs to (YYYY-MM-DD)
+  day       String
+  points    Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
 }
